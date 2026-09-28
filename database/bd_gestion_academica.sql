@@ -55,13 +55,15 @@ CREATE TABLE Grado (
 -- Profesor: Ficha personal del docente vinculada a su cuenta de usuario.
 CREATE TABLE Profesor (
     ProfesorId INT IDENTITY(1, 1) PRIMARY KEY,
-    UsuarioId INT NULL UNIQUE,
+    UsuarioId INT NULL,
     DNI CHAR(8) NOT NULL UNIQUE,
     Nombre VARCHAR(50) NOT NULL,
     Apellido VARCHAR(50) NOT NULL,
     Email VARCHAR(100),
     CONSTRAINT FK_Profesor_Usuario FOREIGN KEY (UsuarioId) REFERENCES Usuario(UsuarioId)
 );
+
+CREATE UNIQUE INDEX UQ_Profesor_UsuarioId ON Profesor(UsuarioId) WHERE UsuarioId IS NOT NULL;
 
 -- Curso: Catálogo general de las 5 materias impartidas en el colegio.
 CREATE TABLE Curso (
@@ -99,7 +101,7 @@ CREATE TABLE Seccion (
 CREATE TABLE Alumno (
     AlumnoId INT IDENTITY(1, 1) PRIMARY KEY,
     SeccionId INT NOT NULL,
-    UsuarioId INT NULL UNIQUE,
+    UsuarioId INT NULL,
     -- Cuenta de acceso para el estudiante/padre
     DNI CHAR(8) NOT NULL UNIQUE,
     Nombre VARCHAR(50) NOT NULL,
@@ -110,6 +112,9 @@ CREATE TABLE Alumno (
     CONSTRAINT FK_Alumno_Usuario FOREIGN KEY (UsuarioId) REFERENCES Usuario(UsuarioId),
     CONSTRAINT CK_Alumno_Estado CHECK (Estado IN ('Activo', 'Retirado'))
 );
+
+-- Único solo entre los que SÍ tienen cuenta; permite muchos NULL
+CREATE UNIQUE INDEX UQ_Alumno_UsuarioId ON Alumno(UsuarioId) WHERE UsuarioId IS NOT NULL;
 
 -- =========================================================
 -- 4. CARGA ACADÉMICA Y OPERACIONES DIRECTAS
@@ -186,7 +191,7 @@ INSERT INTO
 VALUES
     (
         'admin',
-        '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
+        '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
         1
     );
 
@@ -196,7 +201,7 @@ INSERT INTO
 VALUES
     (
         'director',
-        'e0300486c35905d5e5c703e7e2d93e1b7829281a95e7441585ee5e74b3f86e3f',
+        '9e4d7bba246abe731743986c4dc50897b68b1d0249a066abb3530fcbaa33dab3',
         2
     );
 
@@ -206,7 +211,7 @@ INSERT INTO
 VALUES
     (
         'jgarcia',
-        '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8',
+        '9228105f4ea40ae4b70fde55ee2caf4495c1f188333c41ef566417ab04819f56',
         3
     );
 
@@ -216,7 +221,7 @@ INSERT INTO
 VALUES
     (
         'alumno1',
-        '3d0a68d0f1998522d0d0ebbd706037e96b3a32f917a10271d53347528373a00f',
+        'c1042ecc51482cef39f2e89e1273a35074db7f873f1ac6050efd546a9bceefc0',
         4
     );
 
