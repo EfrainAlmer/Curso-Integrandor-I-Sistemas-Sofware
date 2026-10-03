@@ -46,7 +46,7 @@ CREATE TABLE Turno (
     Nombre VARCHAR(20) NOT NULL UNIQUE
 );
 
--- Grado: Niveles académicos (Ej: '1ro Secundaria').
+-- Grado: Niveles académicos (Ej: '1ro Primaria').
 CREATE TABLE Grado (
     GradoId INT IDENTITY(1, 1) PRIMARY KEY,
     Nombre VARCHAR(50) NOT NULL UNIQUE
