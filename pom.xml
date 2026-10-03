@@ -49,6 +49,13 @@
             <version>13.4.0.jre11</version>
         </dependency>
 
+        <!-- BCrypt para verificación de contraseñas (RNF02). Soporta hashes $2a$/$2b$/$2y$ -->
+        <dependency>
+            <groupId>at.favre.lib</groupId>
+            <artifactId>bcrypt</artifactId>
+            <version>0.10.2</version>
+        </dependency>
+
     </dependencies>
 
     <build>

@@ -1,10 +1,12 @@
 package org.pe.edu.cole.app.controller;
 
+import org.pe.edu.cole.app.dao.CuentaBloqueadaException;
 import org.pe.edu.cole.app.dao.UsuarioDAO;
 import org.pe.edu.cole.app.model.Usuario;
 import org.pe.edu.cole.app.view.LoginView;
 
 import javax.swing.*;
+import java.text.SimpleDateFormat;
 
 /**
  * Controlador que gestiona la interacción entre la vista de inicio de sesión y el acceso a datos.
@@ -40,11 +42,25 @@ public class LoginController {
             return;
         }
 
-        Usuario u = usuarioDAO.autenticar(usuario, password);
+        Usuario u;
+        try {
+            u = usuarioDAO.autenticar(usuario, password);
+        } catch (CuentaBloqueadaException e) {
+            String hora = new SimpleDateFormat("HH:mm").format(e.getBloqueadoHasta());
+            JOptionPane.showMessageDialog(vista,
+                    "Cuenta bloqueada por intentos fallidos. Vuelve a intentar después de las " + hora + ".");
+            return;
+        }
 
         if (u == null) {
             JOptionPane.showMessageDialog(vista, "Usuario o contraseña incorrectos.");
             return;
+        }
+
+        if (u.isDebeCambiarPassword()) {
+            // TODO (RF02): reemplazar este aviso por una pantalla real de cambio de contraseña.
+            JOptionPane.showMessageDialog(vista,
+                    "Debes cambiar tu contraseña en este ingreso.\n(Pantalla de cambio de contraseña pendiente de implementar.)");
         }
 
         vista.dispose();
