@@ -1,0 +1,13 @@
+# Archivos compilados de Java y Maven
+target/
+out/
+build/
+*.class
+*.jar
+*.war
+
+# Archivos temporales del sistema y respaldos locales
+*.log
+*.bak
+.DS_Store
+Thumbs.db
