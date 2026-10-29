@@ -84,10 +84,10 @@ public class FrmPrincipal extends JFrame {
         registrarModulo(sidebar, "Usuarios", new PnlUsuarios(), false);
         registrarModulo(sidebar, "Inscripción de alumnos", new PnlInscripcion(), false);
         registrarModulo(sidebar, "Configuración académica", new PnlConfigAcademica(), false);
-        registrarModulo(sidebar, "Carga académica", new PnlCargaAcademica(), false);
-        registrarModulo(sidebar, "Periodos", new PnlPeriodos(), false);
-        registrarModulo(sidebar, "Reportes y exportación", new PnlReportesSIAGIE(), false);
-        registrarModulo(sidebar, "Auditoría y respaldo", new PnlAuditoriaRespaldo(), false);
+        registrarModulo(sidebar, "Carga académica", EstilosUI.envolver(new PnlCargaAcademica()), false);
+        registrarModulo(sidebar, "Periodos", EstilosUI.envolver(new PnlPeriodos()), false);
+        registrarModulo(sidebar, "Reportes y exportación", EstilosUI.envolver(new PnlReportesSIAGIE()), false);
+        registrarModulo(sidebar, "Auditoría y respaldo", EstilosUI.envolver(new PnlAuditoriaRespaldo()), false);
     }
 
     private void configurarMenuDocente(JPanel sidebar) {
@@ -106,7 +106,7 @@ public class FrmPrincipal extends JFrame {
         registrarModulo(sidebar, "Libreta de notas", new PnlConsultaApoderado(), false);
     }
 
-    private void registrarModulo(JPanel sidebar, String nombreMenu, JPanel vista, boolean activoPorDefecto) {
+    private void registrarModulo(JPanel sidebar, String nombreMenu, JComponent vista, boolean activoPorDefecto) {
         panelContenedorVistas.add(vista, nombreMenu);
 
         JPanel item = new JPanel(new BorderLayout());
