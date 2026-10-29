@@ -14,9 +14,9 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <maven.compiler.release>17</maven.compiler.release>
+        <main.class>pe.edu.utp.pitagoras.Main</main.class>
     </properties>
 
     <!-- Librerías exigidas en la Rúbrica del Avance de Proyecto Final 3 (pág. 5) -->
@@ -71,7 +71,7 @@
     </dependencies>
 
     <build>
-        <sourceDirectory>src</sourceDirectory>
+        <!-- Sin <sourceDirectory>: Maven usa src/main/java, src/main/resources y src/test/java -->
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -82,6 +82,14 @@
                     <encoding>UTF-8</encoding>
                 </configuration>
             </plugin>
+
+            <!-- Necesario para que "mvn test" ejecute las pruebas JUnit 5 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
+
             <!-- Generador oficial de Documentación Técnica Javadoc (Exigido en Sección 6. Anexos, pág. 3) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
