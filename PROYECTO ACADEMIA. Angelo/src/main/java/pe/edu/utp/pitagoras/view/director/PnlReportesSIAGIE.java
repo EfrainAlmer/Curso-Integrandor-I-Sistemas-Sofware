@@ -353,7 +353,7 @@ public class PnlReportesSIAGIE extends JPanel {
             default -> {
                 if (tablaRep.getColumnCount() == 0) return;
                 if (anual) EstilosUI.anchos(tablaRep, 150, 330, 70, 70, 70, 70, 110);
-                else       EstilosUI.anchos(tablaRep, 150, 520, 90, 110);
+                else       EstilosUI.anchos(tablaRep, 200, 470, 90, 100);
                 for (int i = 0; i < tablaRep.getColumnCount(); i++) {
                     tablaRep.getColumnModel().getColumn(i).setCellRenderer(new LibretaRenderer());
                 }
@@ -377,7 +377,7 @@ public class PnlReportesSIAGIE extends JPanel {
             setHorizontalAlignment(esCalificativo ? SwingConstants.CENTER : SwingConstants.LEFT);
             setFont(EstilosUI.font(c == 0 || c == ultima ? Font.BOLD : Font.PLAIN, 13));
             setForeground("C".equals(v) ? EstilosUI.DANGER_RED : EstilosUI.TEXT_DARK);
-            setToolTipText(c == 1 && v != null ? v.toString() : null);
+            setToolTipText((c == 0 || c == 1) && v != null ? v.toString() : null);
             return this;
         }
     }
