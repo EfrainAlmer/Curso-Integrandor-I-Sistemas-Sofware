@@ -1,11 +1,18 @@
 package pe.edu.utp.pitagoras.view.director;
 
 import pe.edu.utp.pitagoras.config.EstilosUI;
+import pe.edu.utp.pitagoras.model.AreaCurricular;
+import pe.edu.utp.pitagoras.model.CurriculoSecundaria;
+import pe.edu.utp.pitagoras.model.ReglaCalificativo;
 import pe.edu.utp.pitagoras.temporal.EstadoSistema;
 import pe.edu.utp.pitagoras.temporal.ExportadorXlsx;
 
 import javax.swing.*;
+import javax.swing.border.Border;
+import javax.swing.border.EmptyBorder;
+import javax.swing.border.MatteBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.print.PrinterException;
@@ -14,15 +21,46 @@ import java.io.IOException;
 import java.text.MessageFormat;
 import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
-/** CU18 / CU19 · RF18 / RF19: reportes en PDF (impresión) y exportación a Excel para el SIAGIE. */
+/**
+ * CU18 / CU19 · RF18 / RF19: reportes en PDF (impresión) y exportación a Excel para el SIAGIE.
+ * La libreta sigue el Informe de Progreso del Aprendizaje: cada área con sus competencias, el
+ * calificativo del bimestre y la nota del área (promedio de sus competencias en la escala AD/A/B/C).
+ * Turno único: {@link CurriculoSecundaria#TURNO}.
+ */
 public class PnlReportesSIAGIE extends JPanel {
 
+    private static final String[] LITERAL = {"", "C", "B", "A", "AD"};   // índice = puntaje 1..4
+    private static final List<AreaCurricular> AREAS = CurriculoSecundaria.AREAS;
+    private static final String ESCALA = "Escala: AD = logro destacado  |  A = logro esperado  |  B = en proceso  |  C = en inicio.";
+
     // ── Datos de ejemplo (3.° A) hasta conectar con la base de datos ──
-    private record Alumno(String dni, String nombre, String[] notas, int asistencias, int faltas, int tardanzas) {
+    /**
+     * @param base    nivel típico del alumno (1 = C … 4 = AD)
+     * @param semilla variación determinista de ejemplo entre competencias
+     */
+    private record Alumno(String dni, String nombre, int base, int semilla, int asistencias, int faltas, int tardanzas) {
+
+        /** Calificativos de las 28 competencias en el bimestre dado (1..4), en el orden del currículo. */
+        String[] competencias(int bimestre) {
+            String[] r = new String[CurriculoSecundaria.totalCompetencias()];
+            for (int i = 0; i < r.length; i++) {
+                int d = switch ((i * 5 + bimestre * 2 + semilla) % 7) { case 0 -> -1; case 6 -> 1; default -> 0; };
+                r[i] = LITERAL[Math.max(1, Math.min(4, base + d))];
+            }
+            return r;
+        }
+
+        /** Nota de cada área = promedio de sus competencias (ReglaCalificativo, escala MINEDU). */
+        String[] notasAreas(int bimestre) {
+            return PnlReportesSIAGIE.calcularNotasAreas(competencias(bimestre));
+        }
+
         /** Regla RF08: cualquier C = en riesgo. "Destacado" (supuesto): sin B ni C y al menos la mitad en AD. */
-        String estado() {
+        String estado(int bimestre) {
+            String[] notas = notasAreas(bimestre);
             int ad = 0;
             for (String n : notas) {
                 if (n.equals("C")) return "En Riesgo (C)";
@@ -31,20 +69,19 @@ public class PnlReportesSIAGIE extends JPanel {
             for (String n : notas) if (n.equals("B")) return "Regular";
             return ad * 2 >= notas.length ? "Destacado" : "Regular";
         }
+
         String porcentajeAsistencia() {
             int total = asistencias + faltas;
             return total == 0 ? "—" : String.format("%.1f %%", asistencias * 100.0 / total);
         }
     }
 
-    private static final String[] AREAS = {"Matemática", "Comunicación", "Ciencia y Tec.", "C. Sociales", "DPCC", "Ed. Trabajo"};
-
     private static final Alumno[] ALUMNOS_3A = {
-        new Alumno("74859612", "Agapito Perez, Mateo",    new String[]{"A",  "AD", "A",  "A",  "A",  "A"},  38, 0, 0),
-        new Alumno("75123698", "Almerco Najera, Sofia",   new String[]{"AD", "A",  "AD", "A",  "AD", "AD"}, 37, 1, 0),
-        new Alumno("76321458", "Balvin Chacchi, Diego",   new String[]{"B",  "C",  "B",  "B",  "B",  "A"},  34, 4, 2),
-        new Alumno("71258963", "Paredes Quispe, Valeria", new String[]{"A",  "A",  "B",  "A",  "A",  "A"},  38, 0, 1),
-        new Alumno("73698521", "Ureta Diaz, Sebastian",   new String[]{"AD", "AD", "A",  "AD", "A",  "AD"}, 38, 0, 0)
+        new Alumno("74859612", "Agapito Perez, Mateo",    3, 0, 38, 0, 0),
+        new Alumno("75123698", "Almerco Najera, Sofia",   4, 1, 37, 1, 0),
+        new Alumno("76321458", "Balvin Chacchi, Diego",   2, 2, 34, 4, 2),
+        new Alumno("71258963", "Paredes Quispe, Valeria", 3, 3, 38, 0, 1),
+        new Alumno("73698521", "Ureta Diaz, Sebastian",   4, 4, 38, 0, 0)
     };
 
     private static final String T_LIBRETA = "Libreta de Notas Bimestral";
@@ -52,10 +89,12 @@ public class PnlReportesSIAGIE extends JPanel {
     private static final String T_ASIST   = "Reporte Consolidado de Asistencia";
     private static final String T_SIAGIE  = "Plantilla Oficial para Carga SIAGIE";
 
-    private JComboBox<String> cboTipoReporte, cboBimestreRep, cboGradoRep, cboSeccionRep;
-    private JLabel lblSubPrevia;
+    private JComboBox<String> cboTipoReporte, cboBimestreRep, cboGradoRep, cboSeccionRep, cboEstudianteRep;
+    private JLabel lblSubPrevia, lblEstudiante, lblLeyenda;
     private DefaultTableModel modeloPrevia;
     private JTable tablaRep;
+    private Alumno alumnoVista;          // alumno mostrado en la libreta
+    private boolean cargando;            // evita refrescos en cascada al repoblar el combo de estudiantes
 
     public PnlReportesSIAGIE() {
         initComponents();
@@ -121,7 +160,15 @@ public class PnlReportesSIAGIE extends JPanel {
 
         // ── Vista previa ──────────────────────────────────────────
         JPanel cardPrevia = EstilosUI.card(32, 258, 916, 392);
-        cardPrevia.add(EstilosUI.label("Vista previa de datos consolidados", 20, 14, 876, 22, 15, Font.BOLD, EstilosUI.TEXT_DARK));
+
+        // Selector de estudiante: solo visible en la libreta (que es individual).
+        lblEstudiante = EstilosUI.etiquetaCampo("ESTUDIANTE", 586, 14, 90);
+        cboEstudianteRep = EstilosUI.combo(new String[]{});
+        cboEstudianteRep.setBounds(676, 8, 220, 28);
+        cardPrevia.add(lblEstudiante);
+        cardPrevia.add(cboEstudianteRep);
+
+        cardPrevia.add(EstilosUI.label("Vista previa de datos consolidados", 20, 14, 540, 22, 15, Font.BOLD, EstilosUI.TEXT_DARK));
         lblSubPrevia = EstilosUI.label("", 20, 38, 876, 18, 12, Font.PLAIN, EstilosUI.TEXT_GRAY);
         cardPrevia.add(lblSubPrevia);
 
@@ -129,7 +176,10 @@ public class PnlReportesSIAGIE extends JPanel {
             @Override public boolean isCellEditable(int r, int c) { return false; }
         };
         tablaRep = EstilosUI.tabla(modeloPrevia);
-        cardPrevia.add(EstilosUI.scroll(tablaRep, 20, 66, 876, 304));
+        cardPrevia.add(EstilosUI.scroll(tablaRep, 20, 66, 876, 302));
+
+        lblLeyenda = EstilosUI.label("", 20, 372, 876, 16, 11, Font.PLAIN, EstilosUI.TEXT_GRAY);
+        cardPrevia.add(lblLeyenda);
         add(cardPrevia);
 
         // Cualquier cambio de filtro refresca la vista (así la exportación siempre coincide con lo que se ve).
@@ -138,28 +188,63 @@ public class PnlReportesSIAGIE extends JPanel {
         cboBimestreRep.addActionListener(refrescar);
         cboGradoRep.addActionListener(refrescar);
         cboSeccionRep.addActionListener(refrescar);
+        cboEstudianteRep.addActionListener(refrescar);
         actualizarVista();
     }
 
     // ── Vista previa ──────────────────────────────────────────────
     private void actualizarVista() {
+        if (cargando) return;
         String tipo = (String) cboTipoReporte.getSelectedItem();
         String periodo = (String) cboBimestreRep.getSelectedItem();
         String grado = (String) cboGradoRep.getSelectedItem();
         String seccion = (String) cboSeccionRep.getSelectedItem();
+        boolean esLibreta = T_LIBRETA.equals(tipo);
 
         List<Alumno> alumnos = alumnosDeEjemplo(grado, seccion);
         String nota = motivoSinDatos(periodo, alumnos);
         if (nota != null) alumnos = List.of();
 
-        List<Object[]> filas = new ArrayList<>();
-        String[] cols = estructura(tipo, alumnos, grado, seccion, filas);
-        modeloPrevia.setDataVector(filas.toArray(new Object[0][]), cols);
-        aplicarAnchos(tipo);
+        lblEstudiante.setVisible(esLibreta);
+        cboEstudianteRep.setVisible(esLibreta);
+        alumnoVista = esLibreta ? sincronizarEstudiantes(alumnos) : null;
 
-        lblSubPrevia.setText(tipo + "  ·  " + periodo + "  ·  " + grado + "  ·  " + seccion
+        List<Object[]> filas = new ArrayList<>();
+        String[] cols = estructura(tipo, alumnos, grado, seccion, periodo, alumnoVista, filas);
+        modeloPrevia.setDataVector(filas.toArray(new Object[0][]), cols);
+        aplicarAnchos(tipo, numeroBimestre(periodo) == 0);
+
+        String detalle = (esLibreta && alumnoVista != null)
+                ? periodo + "  ·  " + alumnoVista.nombre() + " (DNI " + alumnoVista.dni() + ")  ·  "
+                  + grado.substring(0, 3) + " " + letraSeccion(seccion)
+                : periodo + "  ·  " + grado + "  ·  " + seccion;
+        lblSubPrevia.setText(tipo + "  ·  " + detalle + "  ·  Turno " + CurriculoSecundaria.TURNO
                 + (nota != null ? "   —   " + nota : "   (datos de ejemplo)"));
         lblSubPrevia.setForeground(nota != null ? EstilosUI.WARNING_AMBER : EstilosUI.TEXT_GRAY);
+
+        lblLeyenda.setText(!esLibreta || alumnoVista == null ? ""
+                : ESCALA + (numeroBimestre(periodo) == 0
+                    ? "  La nota final del área es el promedio de sus competencias al último bimestre (RF14)."
+                    : "  La nota del área es el promedio de sus competencias."));
+    }
+
+    /** Repuebla el combo de estudiantes (solo si cambió la lista) y devuelve el alumno elegido, o null si no hay. */
+    private Alumno sincronizarEstudiantes(List<Alumno> alumnos) {
+        boolean igual = cboEstudianteRep.getItemCount() == alumnos.size();
+        for (int i = 0; igual && i < alumnos.size(); i++) {
+            igual = alumnos.get(i).nombre().equals(cboEstudianteRep.getItemAt(i));
+        }
+        if (!igual) {
+            cargando = true;
+            try {
+                cboEstudianteRep.removeAllItems();
+                for (Alumno a : alumnos) cboEstudianteRep.addItem(a.nombre());
+            } finally {
+                cargando = false;
+            }
+        }
+        int idx = cboEstudianteRep.getSelectedIndex();
+        return (idx >= 0 && idx < alumnos.size()) ? alumnos.get(idx) : null;
     }
 
     /** Devuelve el motivo por el cual no hay datos, o null si sí los hay. */
@@ -182,14 +267,16 @@ public class PnlReportesSIAGIE extends JPanel {
     }
 
     /** Define columnas y filas según el tipo de documento. */
-    private String[] estructura(String tipo, List<Alumno> alumnos, String grado, String seccion, List<Object[]> filas) {
+    private String[] estructura(String tipo, List<Alumno> alumnos, String grado, String seccion,
+                                String periodo, Alumno elegido, List<Object[]> filas) {
         String gradoCorto = grado.substring(0, 3);
-        String secCorta = seccion.equals("Sección B") ? "B" : "A";
+        String secCorta = letraSeccion(seccion);
+        int bim = numeroBimestre(periodo);
         int n = 1;
         switch (tipo) {
             case T_NOMINA -> {
-                for (Alumno a : alumnos) filas.add(new Object[]{ n++, a.dni(), a.nombre(), gradoCorto, secCorta, "Matriculado" });
-                return new String[]{"N.°", "DNI", "Estudiante", "Grado", "Sección", "Condición"};
+                for (Alumno a : alumnos) filas.add(new Object[]{ n++, a.dni(), a.nombre(), gradoCorto, secCorta, CurriculoSecundaria.TURNO, "Matriculado" });
+                return new String[]{"N.°", "DNI", "Estudiante", "Grado", "Sección", "Turno", "Condición"};
             }
             case T_ASIST -> {
                 for (Alumno a : alumnos) filas.add(new Object[]{ a.dni(), a.nombre(), a.asistencias(), a.faltas(), a.tardanzas(), a.porcentajeAsistencia() });
@@ -197,32 +284,101 @@ public class PnlReportesSIAGIE extends JPanel {
             }
             case T_SIAGIE -> {
                 for (Alumno a : alumnos) {
-                    Object[] f = new Object[4 + AREAS.length];
-                    f[0] = a.dni(); f[1] = a.nombre(); f[2] = gradoCorto; f[3] = secCorta;
-                    System.arraycopy(a.notas(), 0, f, 4, AREAS.length);
+                    String[] notas = a.notasAreas(bim == 0 ? 4 : bim);
+                    Object[] f = new Object[5 + notas.length];
+                    f[0] = a.dni(); f[1] = a.nombre(); f[2] = gradoCorto; f[3] = secCorta; f[4] = CurriculoSecundaria.TURNO;
+                    System.arraycopy(notas, 0, f, 5, notas.length);
                     filas.add(f);
                 }
-                return concat(new String[]{"DNI", "Estudiante", "Grado", "Sección"}, AREAS);
+                return concat(new String[]{"DNI", "Estudiante", "Grado", "Sección", "Turno"}, nombresAreas());
             }
-            default -> {   // Libreta
-                for (Alumno a : alumnos) {
-                    Object[] f = new Object[3 + AREAS.length];
-                    f[0] = a.dni(); f[1] = a.nombre();
-                    System.arraycopy(a.notas(), 0, f, 2, AREAS.length);
-                    f[2 + AREAS.length] = a.estado();
-                    filas.add(f);
-                }
-                return concat(concat(new String[]{"DNI", "Estudiante"}, AREAS), new String[]{"Estado"});
+            default -> {   // Libreta individual: áreas → competencias → calificativo y nota del área
+                return elegido == null ? columnasLibreta(bim) : filasLibreta(elegido, bim, filas);
             }
         }
     }
 
-    private void aplicarAnchos(String tipo) {
+    private static String[] columnasLibreta(int bim) {
+        return bim == 0
+                ? new String[]{"Área curricular", "Competencia", "1.er Bim.", "2.° Bim.", "3.er Bim.", "4.° Bim.", "Nota final del área"}
+                : new String[]{"Área curricular", "Competencia", "Calificativo", "Nota del área"};
+    }
+
+    /**
+     * Arma las filas de la libreta. La nota del área solo se escribe en la primera fila de cada área.
+     * Bimestre (1..4): un calificativo por competencia. Anual (0): los 4 bimestres y la nota final del
+     * área con el último bimestre, sin promediar bimestres (RF14).
+     */
+    private String[] filasLibreta(Alumno a, int bim, List<Object[]> filas) {
+        String[][] porBim = new String[4][];
+        for (int b = 1; b <= 4; b++) porBim[b - 1] = a.competencias(b);
+        String[] actual = bim == 0 ? porBim[3] : porBim[bim - 1];
+
+        int idx = 0;
+        for (AreaCurricular area : AREAS) {
+            int total = area.competencias().size();
+            String notaArea = ReglaCalificativo.calcularCalificativoArea(Arrays.copyOfRange(actual, idx, idx + total));
+            for (int k = 0; k < total; k++) {
+                String nombreArea = k == 0 ? area.nombre() : "";
+                String notaFila = k == 0 ? notaArea : "";
+                String competencia = area.competencias().get(k);
+                if (bim == 0) {
+                    filas.add(new Object[]{ nombreArea, competencia,
+                            porBim[0][idx + k], porBim[1][idx + k], porBim[2][idx + k], porBim[3][idx + k], notaFila });
+                } else {
+                    filas.add(new Object[]{ nombreArea, competencia, actual[idx + k], notaFila });
+                }
+            }
+            idx += total;
+        }
+        return columnasLibreta(bim);
+    }
+
+    private void aplicarAnchos(String tipo, boolean anual) {
+        tablaRep.setRowHeight(T_LIBRETA.equals(tipo) ? 28 : 36);
+        tablaRep.setAutoResizeMode(T_SIAGIE.equals(tipo) ? JTable.AUTO_RESIZE_OFF : JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
         switch (tipo) {
-            case T_NOMINA -> { EstilosUI.anchos(tablaRep, 50, 100, 280, 80, 80, 120); EstilosUI.centrar(tablaRep, 0, 1, 3, 4); }
+            case T_NOMINA -> { EstilosUI.anchos(tablaRep, 50, 100, 260, 70, 70, 80, 110); EstilosUI.centrar(tablaRep, 0, 1, 3, 4, 5); }
             case T_ASIST  -> { EstilosUI.anchos(tablaRep, 100, 280, 100, 80, 100, 110); EstilosUI.centrar(tablaRep, 0, 2, 3, 4, 5); }
-            case T_SIAGIE -> { EstilosUI.anchos(tablaRep, 80, 180, 55, 65, 95, 110, 105, 95, 60, 90); EstilosUI.centrar(tablaRep, 0, 2, 3, 4, 5, 6, 7, 8, 9); }
-            default       -> { EstilosUI.anchos(tablaRep, 80, 190, 95, 110, 105, 95, 60, 90, 110); EstilosUI.centrar(tablaRep, 0, 2, 3, 4, 5, 6, 7); }
+            case T_SIAGIE -> {
+                int[] w = new int[5 + AREAS.size()];
+                Arrays.fill(w, 125);
+                w[0] = 80; w[1] = 190; w[2] = 55; w[3] = 65; w[4] = 75;
+                EstilosUI.anchos(tablaRep, w);
+                int[] centradas = new int[AREAS.size() + 4];
+                centradas[0] = 0;
+                for (int i = 1; i < centradas.length; i++) centradas[i] = i + 1;   // 2,3,4 y las áreas
+                EstilosUI.centrar(tablaRep, centradas);
+            }
+            default -> {
+                if (tablaRep.getColumnCount() == 0) return;
+                if (anual) EstilosUI.anchos(tablaRep, 150, 330, 70, 70, 70, 70, 110);
+                else       EstilosUI.anchos(tablaRep, 150, 520, 90, 110);
+                for (int i = 0; i < tablaRep.getColumnCount(); i++) {
+                    tablaRep.getColumnModel().getColumn(i).setCellRenderer(new LibretaRenderer());
+                }
+            }
+        }
+    }
+
+    /** Render de la libreta: línea al inicio de cada área, área y nota del área en negrita, calificativos centrados. */
+    private static final class LibretaRenderer extends DefaultTableCellRenderer {
+        private static final Border SEPARADOR = new MatteBorder(1, 0, 0, 0, new Color(150, 160, 175));
+
+        @Override
+        public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int r, int c) {
+            super.getTableCellRendererComponent(t, v, sel, foc, r, c);
+            boolean inicioArea = !String.valueOf(t.getValueAt(r, 0)).isBlank();
+            Border sep = (inicioArea && r > 0) ? SEPARADOR : new EmptyBorder(0, 0, 0, 0);
+            setBorder(BorderFactory.createCompoundBorder(sep, new EmptyBorder(0, 10, 0, 10)));
+
+            int ultima = t.getColumnCount() - 1;
+            boolean esCalificativo = c >= 2;
+            setHorizontalAlignment(esCalificativo ? SwingConstants.CENTER : SwingConstants.LEFT);
+            setFont(EstilosUI.font(c == 0 || c == ultima ? Font.BOLD : Font.PLAIN, 13));
+            setForeground("C".equals(v) ? EstilosUI.DANGER_RED : EstilosUI.TEXT_DARK);
+            setToolTipText(c == 1 && v != null ? v.toString() : null);
+            return this;
         }
     }
 
@@ -233,11 +389,20 @@ public class PnlReportesSIAGIE extends JPanel {
             EstilosUI.aviso(this, "Sin datos", "La vista previa no tiene registros para imprimir. Ajusta los filtros.");
             return;
         }
-        String titulo = cboTipoReporte.getSelectedItem() + " — " + cboBimestreRep.getSelectedItem()
-                + " — " + cboGradoRep.getSelectedItem() + " — " + cboSeccionRep.getSelectedItem();
+        boolean libreta = T_LIBRETA.equals(cboTipoReporte.getSelectedItem());
+        String periodo = (String) cboBimestreRep.getSelectedItem();
+        String grado = (String) cboGradoRep.getSelectedItem();
+        String titulo = libreta && alumnoVista != null
+                ? "INFORME DE PROGRESO DEL APRENDIZAJE — " + periodo + " — " + alumnoVista.nombre()
+                    + " (DNI " + alumnoVista.dni() + ") — " + grado.substring(0, 3) + " " + letraSeccion((String) cboSeccionRep.getSelectedItem())
+                    + " — Turno " + CurriculoSecundaria.TURNO
+                : cboTipoReporte.getSelectedItem() + " — " + periodo + " — " + grado + " — " + cboSeccionRep.getSelectedItem()
+                    + " — Turno " + CurriculoSecundaria.TURNO;
+        String pie = libreta ? "Colegio Pitágoras · AD logro destacado | A logro esperado | B en proceso | C en inicio · Página {0}"
+                             : "Colegio Pitágoras · Página {0}";
         try {
             boolean impreso = tablaRep.print(JTable.PrintMode.FIT_WIDTH,
-                    new MessageFormat(titulo.replace("'", "''")), new MessageFormat("Colegio Pitágoras · Página {0}"));
+                    new MessageFormat(titulo.replace("'", "''").replace("{", "'{'")), new MessageFormat(pie));
             if (impreso) EstilosUI.info(this, "Impresión", "El documento se envió a la impresora / archivo PDF seleccionado.");
         } catch (PrinterException ex) {
             EstilosUI.error(this, "Error de impresión", "No se pudo imprimir el documento:\n" + ex.getMessage());
@@ -249,12 +414,35 @@ public class PnlReportesSIAGIE extends JPanel {
             EstilosUI.aviso(this, "Sin datos", "La vista previa no tiene registros para exportar. Ajusta los filtros.");
             return;
         }
-        String base = nombreSeguro(cboTipoReporte.getSelectedItem() + "_" + cboBimestreRep.getSelectedItem()
-                + "_" + cboGradoRep.getSelectedItem().toString().substring(0, 2));
-        guardarXlsx(base, (String) cboTipoReporte.getSelectedItem(), modeloPrevia);
+        String tipo = (String) cboTipoReporte.getSelectedItem();
+        String base = tipo + "_" + cboBimestreRep.getSelectedItem() + "_" + cboGradoRep.getSelectedItem().toString().substring(0, 2);
+        DefaultTableModel modelo = modeloPrevia;
+        if (T_LIBRETA.equals(tipo) && alumnoVista != null) {
+            base += "_" + alumnoVista.dni();
+            modelo = libretaParaExcel();
+        }
+        guardarXlsx(nombreSeguro(base), tipo, modelo);
     }
 
-    /** RF19: resumen por estudiante (calificativos + asistencia) para entregar al apoderado al cierre del bimestre. */
+    /** En Excel cada fila debe ser autosuficiente: se repiten el área y su nota en todas las filas del área. */
+    private DefaultTableModel libretaParaExcel() {
+        int cols = modeloPrevia.getColumnCount();
+        String[] nombres = new String[cols];
+        for (int c = 0; c < cols; c++) nombres[c] = modeloPrevia.getColumnName(c);
+        DefaultTableModel copia = new DefaultTableModel(nombres, 0);
+        Object area = "", nota = "";
+        for (int r = 0; r < modeloPrevia.getRowCount(); r++) {
+            Object[] fila = new Object[cols];
+            for (int c = 0; c < cols; c++) fila[c] = modeloPrevia.getValueAt(r, c);
+            if (!String.valueOf(fila[0]).isBlank()) { area = fila[0]; nota = fila[cols - 1]; }
+            fila[0] = area;
+            fila[cols - 1] = nota;
+            copia.addRow(fila);
+        }
+        return copia;
+    }
+
+    /** RF19: resumen por estudiante (nota por área + asistencia) para entregar al apoderado al cierre del bimestre. */
     private void exportarResumenApoderados() {
         String periodo = (String) cboBimestreRep.getSelectedItem();
         if (periodo.startsWith("Anual")) {
@@ -279,15 +467,17 @@ public class PnlReportesSIAGIE extends JPanel {
             sufijo = "_PROVISIONAL";
         }
 
-        String[] cols = concat(concat(new String[]{"DNI", "Estudiante"}, AREAS),
+        int bim = numeroBimestre(periodo);
+        String[] cols = concat(concat(new String[]{"DNI", "Estudiante"}, nombresAreas()),
                 new String[]{"Asistencias", "Faltas", "Tardanzas", "Estado"});
         DefaultTableModel resumen = new DefaultTableModel(cols, 0);
         for (Alumno a : alumnos) {
+            String[] notas = a.notasAreas(bim);
             Object[] f = new Object[cols.length];
             f[0] = a.dni(); f[1] = a.nombre();
-            System.arraycopy(a.notas(), 0, f, 2, AREAS.length);
-            f[2 + AREAS.length] = a.asistencias(); f[3 + AREAS.length] = a.faltas();
-            f[4 + AREAS.length] = a.tardanzas();   f[5 + AREAS.length] = a.estado();
+            System.arraycopy(notas, 0, f, 2, notas.length);
+            int o = 2 + notas.length;
+            f[o] = a.asistencias(); f[o + 1] = a.faltas(); f[o + 2] = a.tardanzas(); f[o + 3] = a.estado(bim);
             resumen.addRow(f);
         }
         String base = nombreSeguro("Resumen_" + periodo + "_" + cboGradoRep.getSelectedItem().toString().substring(0, 2)
@@ -323,6 +513,31 @@ public class PnlReportesSIAGIE extends JPanel {
     }
 
     // ── Utilidades ────────────────────────────────────────────────
+    private static String[] nombresAreas() {
+        return AREAS.stream().map(AreaCurricular::nombreCorto).toArray(String[]::new);
+    }
+
+    /** Notas por área a partir de los calificativos de todas las competencias (en orden del currículo). */
+    private static String[] calcularNotasAreas(String[] competencias) {
+        String[] notas = new String[AREAS.size()];
+        int idx = 0;
+        for (int i = 0; i < notas.length; i++) {
+            int total = AREAS.get(i).competencias().size();
+            notas[i] = ReglaCalificativo.calcularCalificativoArea(Arrays.copyOfRange(competencias, idx, idx + total));
+            idx += total;
+        }
+        return notas;
+    }
+
+    /** "Bimestre 2" → 2; "Anual 2026" → 0. */
+    private static int numeroBimestre(String periodo) {
+        return periodo.startsWith("Anual") ? 0 : Character.getNumericValue(periodo.charAt(periodo.length() - 1));
+    }
+
+    private static String letraSeccion(String seccion) {
+        return seccion.equals("Sección B") ? "B" : "A";
+    }
+
     private static String nombreSeguro(String s) {
         String sinTildes = Normalizer.normalize(s, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
         return sinTildes.replaceAll("[^A-Za-z0-9_\\-]+", "_");
