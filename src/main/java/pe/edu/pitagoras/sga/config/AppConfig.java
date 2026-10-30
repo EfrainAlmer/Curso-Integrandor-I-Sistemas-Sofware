@@ -25,6 +25,18 @@ public final class AppConfig {
     }
 
     /**
+     * Crea la configuración a partir de propiedades ya cargadas (útil en pruebas).
+     *
+     * @param propiedades valores de configuración.
+     * @return la configuración.
+     */
+    public static AppConfig de(Properties propiedades) {
+        Properties copia = new Properties();
+        copia.putAll(propiedades);
+        return new AppConfig(copia);
+    }
+
+    /**
      * @return la configuración cargada.
      * @throws IllegalStateException si falta el archivo o no se puede leer.
      */
@@ -62,5 +74,15 @@ public final class AppConfig {
             throw new IllegalStateException("Falta la propiedad '" + clave + "' en config.properties");
         }
         return valor.trim();
+    }
+
+    /**
+     * @param clave   nombre de la propiedad.
+     * @param defecto valor si la propiedad no existe o está vacía.
+     * @return el valor sin espacios sobrantes, o el valor por defecto.
+     */
+    public String obtenerOpcional(String clave, String defecto) {
+        String valor = propiedades.getProperty(clave);
+        return StringUtils.isBlank(valor) ? defecto : valor.trim();
     }
 }

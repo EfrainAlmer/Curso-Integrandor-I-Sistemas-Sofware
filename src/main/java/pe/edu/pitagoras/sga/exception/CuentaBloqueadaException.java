@@ -1,28 +1,23 @@
 package pe.edu.pitagoras.sga.exception;
 
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 /**
- * Se lanza cuando la cuenta está bloqueada temporalmente por superar el máximo
- * de intentos fallidos de inicio de sesión (RF02). Es distinta de "credenciales
- * incorrectas" para que el controlador muestre un mensaje más útil.
+ * Cuenta bloqueada temporalmente por superar el máximo de intentos fallidos (RF02).
+ * Es distinta de "credenciales incorrectas" para que el controlador muestre
+ * hasta cuándo debe esperar el usuario.
  */
-public class CuentaBloqueadaException extends Exception {
+public class CuentaBloqueadaException extends AuthException {
 
-    private final Timestamp bloqueadoHasta;
+    private final LocalDateTime bloqueadoHasta;
 
-    /**
-     * @param bloqueadoHasta fecha y hora hasta la cual la cuenta sigue bloqueada.
-     */
-    public CuentaBloqueadaException(Timestamp bloqueadoHasta) {
+    /** @param bloqueadoHasta fecha y hora hasta la cual la cuenta sigue bloqueada. */
+    public CuentaBloqueadaException(LocalDateTime bloqueadoHasta) {
         super("Cuenta bloqueada temporalmente por intentos fallidos.");
         this.bloqueadoHasta = bloqueadoHasta;
     }
 
-    /**
-     * @return fecha y hora hasta la cual no se permite un nuevo intento.
-     */
-    public Timestamp getBloqueadoHasta() {
+    public LocalDateTime getBloqueadoHasta() {
         return bloqueadoHasta;
     }
 }

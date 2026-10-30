@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.SQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +21,7 @@ public final class ConexionBD {
     private static final int MAX_CONEXIONES = 3;
 
     private static HikariDataSource pool;
+    private static AppConfig configuracion;
 
     private ConexionBD() {
     }
@@ -49,6 +51,7 @@ public final class ConexionBD {
             throw new AccesoDatosException("No se pudo conectar a la base de datos. "
                     + "Verifique que SQL Server esté encendido y revise config.properties.", e);
         }
+        configuracion = config;
         LOG.info("Pool de conexiones iniciado (máximo {} conexiones)", MAX_CONEXIONES);
     }
 
@@ -62,6 +65,25 @@ public final class ConexionBD {
             return pool.getConnection();
         } catch (SQLException e) {
             throw new AccesoDatosException("No se pudo obtener una conexión a la base de datos", e);
+        }
+    }
+
+    /**
+     * Conexión directa (fuera del pool) a la base master del mismo servidor. Solo la usa
+     * la restauración de copias, que no puede ejecutarse conectada a la base que se reemplaza.
+     */
+    public static Connection abrirConexionMaster() throws SQLException {
+        Preconditions.checkState(configuracion != null, "ConexionBD.iniciar() no fue llamado");
+        String url = configuracion.obtener("db.url")
+                .replaceAll("(?i)databaseName=[^;]*", "databaseName=master");
+        return DriverManager.getConnection(url, configuracion.obtener("db.user"),
+                configuracion.obtener("db.password"));
+    }
+
+    /** Descarta las conexiones abiertas del pool (antes y después de restaurar una copia). */
+    public static void liberarConexiones() {
+        if (pool != null && pool.getHikariPoolMXBean() != null) {
+            pool.getHikariPoolMXBean().softEvictConnections();
         }
     }
 
