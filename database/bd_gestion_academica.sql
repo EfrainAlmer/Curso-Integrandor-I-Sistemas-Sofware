@@ -1,444 +1,283 @@
+
 USE master;
 GO
-IF EXISTS (SELECT * FROM sys.databases WHERE name = 'BD_GestionAcademica')
-BEGIN
-    ALTER DATABASE BD_GestionAcademica SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-    DROP DATABASE BD_GestionAcademica;
-END
+IF DB_ID(N'BD_GestionAcademica_Pitagoras') IS NULL
+    CREATE DATABASE BD_GestionAcademica_Pitagoras;
 GO
-CREATE DATABASE BD_GestionAcademica;
-GO
-USE BD_GestionAcademica;
+USE BD_GestionAcademica_Pitagoras;
 GO
 
--- =========================================================
--- 1. SEGURIDAD, ROLES Y USUARIOS
--- =========================================================
+/* ---------- Seguridad ---------- */
 CREATE TABLE Rol (
-    RolId INT IDENTITY(1, 1) PRIMARY KEY,
-    Nombre VARCHAR(30) NOT NULL UNIQUE
+    RolId  INT IDENTITY(1,1) CONSTRAINT PK_Rol PRIMARY KEY,
+    Nombre VARCHAR(30) NOT NULL CONSTRAINT UQ_Rol_Nombre UNIQUE
 );
 
 CREATE TABLE Usuario (
-    UsuarioId INT IDENTITY(1, 1) PRIMARY KEY,
-    Username VARCHAR(50) NOT NULL UNIQUE,
-    -- VARCHAR(100), no CHAR: un hash BCrypt no mide longitud fija (varía según
-    -- el costo del algoritmo); la sal ya viene embebida dentro del propio hash.
-    PasswordHash VARCHAR(100) NOT NULL,
-    RolId INT NOT NULL,
-    Estado BIT NOT NULL DEFAULT 1,
-    DebeCambiarPassword BIT NOT NULL DEFAULT 1,     -- RF02: obliga cambio en el primer ingreso
-    IntentosFallidos INT NOT NULL DEFAULT 0,        -- RF02: contador de intentos fallidos
-    BloqueadoHasta DATETIME NULL,                   -- RF02: NULL = no bloqueado
-    CreadoEl DATETIME NOT NULL DEFAULT GETDATE(),
-    CONSTRAINT FK_Usuario_Rol FOREIGN KEY (RolId) REFERENCES Rol(RolId)
+    UsuarioId           INT IDENTITY(1,1) CONSTRAINT PK_Usuario PRIMARY KEY,
+    Username            VARCHAR(50)  NOT NULL CONSTRAINT UQ_Usuario_Username UNIQUE,
+    PasswordHash        VARCHAR(100) NOT NULL,              -- BCrypt costo 12 (RNF02)
+    RolId               INT          NOT NULL CONSTRAINT FK_Usuario_Rol REFERENCES Rol(RolId),
+    Estado              BIT          NOT NULL CONSTRAINT DF_Usuario_Estado DEFAULT 1,   -- 0 = dado de baja (RF03)
+    DebeCambiarPassword BIT          NOT NULL CONSTRAINT DF_Usuario_DebeCambiar DEFAULT 1,
+    IntentosFallidos    INT          NOT NULL CONSTRAINT DF_Usuario_Intentos DEFAULT 0,
+    BloqueadoHasta      DATETIME2    NULL,
+    CreadoEl            DATETIME2    NOT NULL CONSTRAINT DF_Usuario_Creado DEFAULT SYSDATETIME()
 );
 
--- =========================================================
--- 2. TABLAS MAESTRAS Y PERSONAL DOCENTE
--- =========================================================
+/* ---------- Estructura del colegio ---------- */
 CREATE TABLE Turno (
-    TurnoId INT IDENTITY(1, 1) PRIMARY KEY,
-    Nombre VARCHAR(20) NOT NULL UNIQUE
+    TurnoId INT IDENTITY(1,1) CONSTRAINT PK_Turno PRIMARY KEY,
+    Nombre  VARCHAR(20) NOT NULL CONSTRAINT UQ_Turno_Nombre UNIQUE
 );
 
 CREATE TABLE Grado (
-    GradoId INT IDENTITY(1, 1) PRIMARY KEY,
-    Nombre VARCHAR(50) NOT NULL UNIQUE
+    GradoId INT IDENTITY(1,1) CONSTRAINT PK_Grado PRIMARY KEY,
+    Nombre  VARCHAR(50) NOT NULL CONSTRAINT UQ_Grado_Nombre UNIQUE
 );
 
-CREATE TABLE Profesor (
-    ProfesorId INT IDENTITY(1, 1) PRIMARY KEY,
-    UsuarioId INT NULL,
-    DNI CHAR(8) NOT NULL UNIQUE,
-    Nombre VARCHAR(50) NOT NULL,
-    Apellido VARCHAR(50) NOT NULL,
-    Email VARCHAR(100) NULL,
-    CONSTRAINT FK_Profesor_Usuario FOREIGN KEY (UsuarioId) REFERENCES Usuario(UsuarioId)
-);
-
-CREATE UNIQUE INDEX UQ_Profesor_UsuarioId ON Profesor(UsuarioId) WHERE UsuarioId IS NOT NULL;
-
-CREATE TABLE Curso (
-    CursoId INT IDENTITY(1, 1) PRIMARY KEY,
-    Nombre VARCHAR(100) NOT NULL UNIQUE
-);
-
--- Periodo: único lugar donde se define el año lectivo y el bimestre.
--- FechaInicio/FechaFin permiten filtrar asistencia por bimestre.
-CREATE TABLE Periodo (
-    PeriodoId INT IDENTITY(1, 1) PRIMARY KEY,
-    AnioLectivo INT NOT NULL,
-    BimestreNum INT NOT NULL,
-    FechaInicio DATE NOT NULL,
-    FechaFin DATE NOT NULL,
-    Cerrado BIT NOT NULL DEFAULT 0,                 -- RF07: bloquea edición de notas/asistencia
-    FechaCierre DATETIME NULL,
-    CerradoPorUsuarioId INT NULL,                   -- RF07: deja registro de quién cerró/reabrió
-    CONSTRAINT CK_Bimestre CHECK (BimestreNum BETWEEN 1 AND 4),
-    CONSTRAINT CK_Periodo_Fechas CHECK (FechaFin > FechaInicio),
-    CONSTRAINT UQ_Periodo_Anio UNIQUE (AnioLectivo, BimestreNum),
-    CONSTRAINT FK_Periodo_Usuario FOREIGN KEY (CerradoPorUsuarioId) REFERENCES Usuario(UsuarioId)
-);
-
--- =========================================================
--- 3. ESTRUCTURA ESCOLAR Y ESTUDIANTES
--- =========================================================
 CREATE TABLE Seccion (
-    SeccionId INT IDENTITY(1, 1) PRIMARY KEY,
-    GradoId INT NOT NULL,
-    TurnoId INT NOT NULL,
-    Nombre CHAR(1) NOT NULL,
-    CONSTRAINT FK_Seccion_Grado FOREIGN KEY (GradoId) REFERENCES Grado(GradoId),
-    CONSTRAINT FK_Seccion_Turno FOREIGN KEY (TurnoId) REFERENCES Turno(TurnoId),
+    SeccionId INT IDENTITY(1,1) CONSTRAINT PK_Seccion PRIMARY KEY,
+    GradoId   INT     NOT NULL CONSTRAINT FK_Seccion_Grado REFERENCES Grado(GradoId),
+    TurnoId   INT     NOT NULL CONSTRAINT FK_Seccion_Turno REFERENCES Turno(TurnoId),
+    Nombre    CHAR(1) NOT NULL,
     CONSTRAINT UQ_Seccion_Grado_Nombre UNIQUE (GradoId, Nombre)
 );
 
+/* ---------- Personas ---------- */
 CREATE TABLE Alumno (
-    AlumnoId INT IDENTITY(1, 1) PRIMARY KEY,
-    SeccionId INT NOT NULL,
-    UsuarioId INT NULL,
-    DNI CHAR(8) NOT NULL UNIQUE,
-    Nombre VARCHAR(50) NOT NULL,
-    Apellido VARCHAR(50) NOT NULL,
-    NombreApoderado VARCHAR(100) NULL,
+    AlumnoId          INT IDENTITY(1,1) CONSTRAINT PK_Alumno PRIMARY KEY,
+    SeccionId         INT         NOT NULL CONSTRAINT FK_Alumno_Seccion REFERENCES Seccion(SeccionId),
+    UsuarioId         INT         NULL     CONSTRAINT FK_Alumno_Usuario REFERENCES Usuario(UsuarioId), -- cuenta del apoderado
+    DNI               CHAR(8)     NOT NULL CONSTRAINT UQ_Alumno_DNI UNIQUE,
+    Nombre            VARCHAR(50) NOT NULL,
+    Apellido          VARCHAR(50) NOT NULL,
+    NombreApoderado   VARCHAR(100) NOT NULL,
     TelefonoApoderado VARCHAR(20) NULL,
-    Estado VARCHAR(20) NOT NULL DEFAULT 'Activo',
-    CONSTRAINT FK_Alumno_Seccion FOREIGN KEY (SeccionId) REFERENCES Seccion(SeccionId),
-    CONSTRAINT FK_Alumno_Usuario FOREIGN KEY (UsuarioId) REFERENCES Usuario(UsuarioId),
-    CONSTRAINT CK_Alumno_Estado CHECK (Estado IN ('Activo', 'Retirado'))
+    Estado            VARCHAR(20) NOT NULL CONSTRAINT DF_Alumno_Estado DEFAULT 'ACTIVO',
+    CONSTRAINT CK_Alumno_Estado CHECK (Estado IN ('ACTIVO','RETIRADO'))   -- baja lógica (RF04)
+);
+-- Una cuenta de apoderado por alumno; el índice filtrado permite varios alumnos sin cuenta (NULL).
+CREATE UNIQUE INDEX UQ_Alumno_Usuario ON Alumno(UsuarioId) WHERE UsuarioId IS NOT NULL;
+
+CREATE TABLE Docente (
+    DocenteId INT IDENTITY(1,1) CONSTRAINT PK_Docente PRIMARY KEY,
+    UsuarioId INT          NOT NULL CONSTRAINT UQ_Docente_Usuario UNIQUE
+                           CONSTRAINT FK_Docente_Usuario REFERENCES Usuario(UsuarioId),
+    DNI       CHAR(8)      NOT NULL CONSTRAINT UQ_Docente_DNI UNIQUE,
+    Nombre    VARCHAR(50)  NOT NULL,
+    Apellido  VARCHAR(50)  NOT NULL,
+    Email     VARCHAR(100) NULL
 );
 
-CREATE UNIQUE INDEX UQ_Alumno_UsuarioId ON Alumno(UsuarioId) WHERE UsuarioId IS NOT NULL;
-
--- =========================================================
--- 4. CARGA ACADÉMICA Y EVALUACIONES
--- =========================================================
-CREATE TABLE CursoSeccion (
-    CursoSeccionId INT IDENTITY(1, 1) PRIMARY KEY,
-    CursoId INT NOT NULL,
-    SeccionId INT NOT NULL,
-    ProfesorId INT NOT NULL,
-    AnioLectivo INT NOT NULL,
-    CONSTRAINT FK_CursoSeccion_Curso FOREIGN KEY (CursoId) REFERENCES Curso(CursoId),
-    CONSTRAINT FK_CursoSeccion_Seccion FOREIGN KEY (SeccionId) REFERENCES Seccion(SeccionId),
-    CONSTRAINT FK_CursoSeccion_Profesor FOREIGN KEY (ProfesorId) REFERENCES Profesor(ProfesorId),
-    CONSTRAINT UQ_CursoSeccion UNIQUE (CursoId, SeccionId, AnioLectivo)
+/* ---------- Académico ---------- */
+CREATE TABLE Curso (                                        -- hace de área curricular
+    CursoId INT IDENTITY(1,1) CONSTRAINT PK_Curso PRIMARY KEY,
+    Nombre  VARCHAR(100) NOT NULL CONSTRAINT UQ_Curso_Nombre UNIQUE
 );
 
-CREATE TABLE Evaluacion (
-    EvaluacionId INT IDENTITY(1, 1) PRIMARY KEY,
-    PeriodoId INT NOT NULL,
-    CursoSeccionId INT NOT NULL,
-    NumEval INT NOT NULL,
-    NombreEvaluacion VARCHAR(50) NOT NULL DEFAULT 'Examen Parcial',
-    CONSTRAINT FK_Evaluacion_Periodo FOREIGN KEY (PeriodoId) REFERENCES Periodo(PeriodoId),
-    CONSTRAINT FK_Evaluacion_CursoSeccion FOREIGN KEY (CursoSeccionId) REFERENCES CursoSeccion(CursoSeccionId),
-    CONSTRAINT CK_NumEval CHECK (NumEval IN (1, 2)),
-    CONSTRAINT UQ_Evaluacion_Periodo_Curso_Num UNIQUE (PeriodoId, CursoSeccionId, NumEval)
+CREATE TABLE Competencia (                                  -- los títulos de la grilla de notas salen de aquí
+    CursoId INT          NOT NULL CONSTRAINT FK_Competencia_Curso REFERENCES Curso(CursoId),
+    Codigo  CHAR(1)      NOT NULL,                          -- '1' a '4' (tipo char por requisito del curso)
+    Nombre  VARCHAR(150) NOT NULL,
+    CONSTRAINT PK_Competencia PRIMARY KEY (CursoId, Codigo),
+    CONSTRAINT CK_Competencia_Codigo CHECK (Codigo LIKE '[1-4]')
+);
+
+CREATE TABLE CursoSeccion (                                 -- carga académica (RF06)
+    CursoSeccionId INT IDENTITY(1,1) CONSTRAINT PK_CursoSeccion PRIMARY KEY,
+    CursoId   INT NOT NULL CONSTRAINT FK_CursoSeccion_Curso   REFERENCES Curso(CursoId),
+    SeccionId INT NOT NULL CONSTRAINT FK_CursoSeccion_Seccion REFERENCES Seccion(SeccionId),
+    DocenteId INT NOT NULL CONSTRAINT FK_CursoSeccion_Docente REFERENCES Docente(DocenteId),
+    CONSTRAINT UQ_CursoSeccion_Curso_Seccion UNIQUE (CursoId, SeccionId)
+);
+
+CREATE TABLE Periodo (
+    PeriodoId           INT IDENTITY(1,1) CONSTRAINT PK_Periodo PRIMARY KEY,
+    AnioLectivo         INT     NOT NULL,
+    BimestreNum         TINYINT NOT NULL,
+    FechaInicio         DATE    NOT NULL,
+    FechaFin            DATE    NOT NULL,
+    Cerrado             BIT     NOT NULL CONSTRAINT DF_Periodo_Cerrado DEFAULT 0,
+    FechaCierre         DATETIME2 NULL,
+    CerradoPorUsuarioId INT     NULL CONSTRAINT FK_Periodo_Usuario REFERENCES Usuario(UsuarioId),
+    CONSTRAINT UQ_Periodo_Anio_Bimestre UNIQUE (AnioLectivo, BimestreNum),
+    CONSTRAINT CK_Periodo_Bimestre CHECK (BimestreNum BETWEEN 1 AND 4),
+    CONSTRAINT CK_Periodo_Fechas CHECK (FechaFin > FechaInicio)
+);
+
+CREATE TABLE Evaluacion (                                   -- una por periodo, curso-sección y competencia
+    EvaluacionId      INT IDENTITY(1,1) CONSTRAINT PK_Evaluacion PRIMARY KEY,
+    PeriodoId         INT     NOT NULL CONSTRAINT FK_Evaluacion_Periodo REFERENCES Periodo(PeriodoId),
+    CursoSeccionId    INT     NOT NULL CONSTRAINT FK_Evaluacion_CursoSeccion REFERENCES CursoSeccion(CursoSeccionId),
+    CodigoCompetencia CHAR(1) NOT NULL,
+    CONSTRAINT UQ_Evaluacion UNIQUE (PeriodoId, CursoSeccionId, CodigoCompetencia),
+    CONSTRAINT CK_Evaluacion_Codigo CHECK (CodigoCompetencia LIKE '[1-4]')
 );
 
 CREATE TABLE Nota (
-    AlumnoId INT NOT NULL,
-    EvaluacionId INT NOT NULL,
-    Puntaje DECIMAL(4, 2) NOT NULL,
-    Fecha DATETIME NOT NULL DEFAULT GETDATE(),
+    AlumnoId     INT     NOT NULL CONSTRAINT FK_Nota_Alumno REFERENCES Alumno(AlumnoId),
+    EvaluacionId INT     NOT NULL CONSTRAINT FK_Nota_Evaluacion REFERENCES Evaluacion(EvaluacionId),
+    Calificativo CHAR(2) NOT NULL,                          -- char[] en la clase Nota (requisito del curso)
+    Fecha        DATETIME2 NOT NULL CONSTRAINT DF_Nota_Fecha DEFAULT SYSDATETIME(),
     CONSTRAINT PK_Nota PRIMARY KEY (AlumnoId, EvaluacionId),
-    CONSTRAINT FK_Nota_Alumno FOREIGN KEY (AlumnoId) REFERENCES Alumno(AlumnoId),
-    CONSTRAINT FK_Nota_Evaluacion FOREIGN KEY (EvaluacionId) REFERENCES Evaluacion(EvaluacionId),
-    CONSTRAINT CK_Puntaje CHECK (Puntaje BETWEEN 0.00 AND 20.00)
+    CONSTRAINT CK_Nota_Calificativo CHECK (Calificativo IN ('AD','A','B','C'))
 );
 
 CREATE TABLE Asistencia (
-    AlumnoId INT NOT NULL,
-    CursoSeccionId INT NOT NULL,
-    Fecha DATE NOT NULL,
-    Estado CHAR(1) NOT NULL,                        -- A = Asistió, F = Falta, T = Tardanza, J = Justificado
-    Observacion VARCHAR(150) NULL,                  -- justificación de tardanza/inasistencia
+    AlumnoId       INT     NOT NULL CONSTRAINT FK_Asistencia_Alumno REFERENCES Alumno(AlumnoId),
+    CursoSeccionId INT     NOT NULL CONSTRAINT FK_Asistencia_CursoSeccion REFERENCES CursoSeccion(CursoSeccionId),
+    Fecha          DATE    NOT NULL,
+    Estado         CHAR(1) NOT NULL,                        -- A asistió, F falta, T tardanza
+    Justificada    BIT     NOT NULL CONSTRAINT DF_Asistencia_Justificada DEFAULT 0,
+    Observacion    VARCHAR(150) NULL,
     CONSTRAINT PK_Asistencia PRIMARY KEY (AlumnoId, CursoSeccionId, Fecha),
-    CONSTRAINT FK_Asistencia_Alumno FOREIGN KEY (AlumnoId) REFERENCES Alumno(AlumnoId),
-    CONSTRAINT FK_Asistencia_CursoSeccion FOREIGN KEY (CursoSeccionId) REFERENCES CursoSeccion(CursoSeccionId),
-    CONSTRAINT CK_Asistencia_Estado CHECK (Estado IN ('A', 'F', 'T', 'J'))
+    CONSTRAINT CK_Asistencia_Estado CHECK (Estado IN ('A','F','T')),
+    CONSTRAINT CK_Asistencia_Justificada CHECK (Justificada = 0 OR Estado = 'F')   -- falta justificada conserva Estado F
 );
 
--- =========================================================
--- 5. CONSOLIDADO PARA REPORTES (DetalleRendimiento)
--- =========================================================
--- Tabla de resumen: una fila por alumno, curso y bimestre.
--- Se llena/actualiza con sp_ActualizarReporteRendimiento.
-CREATE TABLE DetalleRendimiento (
-    AlumnoId INT NOT NULL,
-    CursoSeccionId INT NOT NULL,
-    PeriodoId INT NOT NULL,
-    PromedioBimestre DECIMAL(4, 2) NOT NULL DEFAULT 0.00,
-    TotalAsistencias INT NOT NULL DEFAULT 0,
-    TotalFaltas INT NOT NULL DEFAULT 0,
-    TotalTardanzas INT NOT NULL DEFAULT 0,
-    TotalJustificadas INT NOT NULL DEFAULT 0,
-    EstadoAprobacion VARCHAR(20) NOT NULL DEFAULT 'En Proceso',
-    UltimaActualizacion DATETIME NOT NULL DEFAULT GETDATE(),
+CREATE TABLE DetalleRendimiento (                           -- se llena al cerrar el periodo (RF07)
+    AlumnoId            INT     NOT NULL CONSTRAINT FK_Detalle_Alumno REFERENCES Alumno(AlumnoId),
+    CursoSeccionId      INT     NOT NULL CONSTRAINT FK_Detalle_CursoSeccion REFERENCES CursoSeccion(CursoSeccionId),
+    PeriodoId           INT     NOT NULL CONSTRAINT FK_Detalle_Periodo REFERENCES Periodo(PeriodoId),
+    Calificativo        CHAR(2) NOT NULL,
+    TotalAsistencias    INT     NOT NULL CONSTRAINT DF_Detalle_Asis DEFAULT 0,
+    TotalFaltas         INT     NOT NULL CONSTRAINT DF_Detalle_Faltas DEFAULT 0,
+    TotalTardanzas      INT     NOT NULL CONSTRAINT DF_Detalle_Tard DEFAULT 0,
+    TotalJustificadas   INT     NOT NULL CONSTRAINT DF_Detalle_Just DEFAULT 0,
+    EstadoAprobacion    VARCHAR(20) NOT NULL,
+    UltimaActualizacion DATETIME2 NOT NULL CONSTRAINT DF_Detalle_Act DEFAULT SYSDATETIME(),
     CONSTRAINT PK_DetalleRendimiento PRIMARY KEY (AlumnoId, CursoSeccionId, PeriodoId),
-    CONSTRAINT FK_DetalleRendimiento_Alumno FOREIGN KEY (AlumnoId) REFERENCES Alumno(AlumnoId),
-    CONSTRAINT FK_DetalleRendimiento_CursoSeccion FOREIGN KEY (CursoSeccionId) REFERENCES CursoSeccion(CursoSeccionId),
-    CONSTRAINT FK_DetalleRendimiento_Periodo FOREIGN KEY (PeriodoId) REFERENCES Periodo(PeriodoId),
-    CONSTRAINT CK_DetalleRendimiento_Estado CHECK (EstadoAprobacion IN ('En Proceso', 'Aprobado', 'Desaprobado'))
+    CONSTRAINT CK_Detalle_Calificativo CHECK (Calificativo IN ('AD','A','B','C'))
 );
 
--- =========================================================
--- 6. AUDITORÍA (RF09)
--- =========================================================
--- Registro genérico de cambios sobre Nota y Asistencia: quién, cuándo,
--- qué fila y qué valor tenía antes/después. "ClavePrimaria" guarda una
--- descripción legible de la fila afectada (p. ej. 'AlumnoId=5;EvaluacionId=12').
+/* ---------- Auditoría, respaldo y accesos ---------- */
 CREATE TABLE Auditoria (
-    AuditoriaId INT IDENTITY(1, 1) PRIMARY KEY,
-    Tabla VARCHAR(20) NOT NULL,
+    AuditoriaId   INT IDENTITY(1,1) CONSTRAINT PK_Auditoria PRIMARY KEY,
+    Tabla         VARCHAR(50)  NOT NULL,
     ClavePrimaria VARCHAR(100) NOT NULL,
-    UsuarioId INT NOT NULL,
-    FechaCambio DATETIME NOT NULL DEFAULT GETDATE(),
-    ValorAnterior VARCHAR(20) NULL,
-    ValorNuevo VARCHAR(20) NOT NULL,
-    CONSTRAINT FK_Auditoria_Usuario FOREIGN KEY (UsuarioId) REFERENCES Usuario(UsuarioId),
-    CONSTRAINT CK_Auditoria_Tabla CHECK (Tabla IN ('Nota', 'Asistencia'))
+    UsuarioId     INT          NOT NULL CONSTRAINT FK_Auditoria_Usuario REFERENCES Usuario(UsuarioId),
+    FechaCambio   DATETIME2    NOT NULL CONSTRAINT DF_Auditoria_Fecha DEFAULT SYSDATETIME(),
+    ValorAnterior VARCHAR(200) NULL,
+    ValorNuevo    VARCHAR(200) NOT NULL,
+    Accion        VARCHAR(30)  NOT NULL,
+    CONSTRAINT CK_Auditoria_Accion CHECK (Accion IN ('MODIFICAR','CERRAR_PERIODO','REABRIR_PERIODO','BACKUP','RESTAURAR'))
+);
+
+CREATE TABLE CopiaSeguridad (                               -- RF10
+    CopiaId   INT IDENTITY(1,1) CONSTRAINT PK_CopiaSeguridad PRIMARY KEY,
+    Ruta      VARCHAR(260) NOT NULL,
+    Fecha     DATETIME2    NOT NULL CONSTRAINT DF_Copia_Fecha DEFAULT SYSDATETIME(),
+    UsuarioId INT          NOT NULL CONSTRAINT FK_Copia_Usuario REFERENCES Usuario(UsuarioId),
+    Estado    VARCHAR(20)  NOT NULL,
+    CONSTRAINT CK_Copia_Estado CHECK (Estado IN ('EXITOSO','FALLIDO'))
+);
+
+CREATE TABLE IntentoAcceso (                                -- bitácora de accesos (RNF04); nunca guarda contraseñas
+    IntentoId INT IDENTITY(1,1) CONSTRAINT PK_IntentoAcceso PRIMARY KEY,
+    Username  VARCHAR(50) NOT NULL,                         -- sin FK: puede ser un usuario inexistente
+    Fecha     DATETIME2   NOT NULL CONSTRAINT DF_Intento_Fecha DEFAULT SYSDATETIME(),
+    Resultado VARCHAR(20) NOT NULL,
+    CONSTRAINT CK_Intento_Resultado CHECK (Resultado IN ('EXITOSO','FALLIDO','BLOQUEADO'))
 );
 GO
 
--- =========================================================
--- 7. STORED PROCEDURES DE AUTENTICACIÓN
--- =========================================================
--- Devuelve los datos para que Java verifique con
--- BCrypt.checkpw(passwordPlano, hashGuardado) y aplique las reglas de
--- bloqueo / cambio obligatorio de contraseña.
-CREATE PROCEDURE sp_ObtenerUsuarioParaLogin
-    @Username VARCHAR(50)
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    SELECT
-        u.UsuarioId,
-        u.Username,
-        u.PasswordHash,
-        u.Estado,
-        u.DebeCambiarPassword,
-        u.IntentosFallidos,
-        u.BloqueadoHasta,
-        r.Nombre AS Rol,
-        CASE
-            WHEN r.Nombre = 'Docente' THEN ISNULL(p.Nombre + ' ' + p.Apellido, 'Docente')
-            WHEN r.Nombre = 'Estudiante' THEN ISNULL(a.Nombre + ' ' + a.Apellido, 'Estudiante')
-            ELSE u.Username
-        END AS NombreCompleto
-    FROM Usuario u
-    INNER JOIN Rol r ON u.RolId = r.RolId
-    LEFT JOIN Profesor p ON u.UsuarioId = p.UsuarioId
-    LEFT JOIN Alumno a ON u.UsuarioId = a.UsuarioId
-    WHERE u.Username = @Username
-      AND u.Estado = 1;
-END;
+/* ---------- Índices (RNF05) ----------
+   Nota(AlumnoId) y Evaluacion(PeriodoId, CursoSeccionId) ya quedan cubiertos por
+   PK_Nota y UQ_Evaluacion, que empiezan con esas mismas columnas. */
+CREATE INDEX IX_Nota_Evaluacion        ON Nota(EvaluacionId);
+CREATE INDEX IX_Asistencia_Curso_Fecha ON Asistencia(CursoSeccionId, Fecha);
+CREATE INDEX IX_Alumno_Seccion         ON Alumno(SeccionId);
+CREATE INDEX IX_Auditoria_Fecha        ON Auditoria(FechaCambio);
 GO
 
--- Se llama cuando BCrypt.checkpw(...) da false en Java.
--- Bloquea la cuenta 15 minutos al llegar a 3 intentos fallidos (RF02).
-CREATE PROCEDURE sp_RegistrarIntentoFallido
-    @UsuarioId INT
-AS
-BEGIN
-    SET NOCOUNT ON;
+/* ===================== DATOS SEMILLA ===================== */
+INSERT INTO Rol (Nombre) VALUES ('DIRECTOR'), ('DOCENTE'), ('APODERADO');
+INSERT INTO Turno (Nombre) VALUES (N'Mañana'), (N'Tarde');
+INSERT INTO Grado (Nombre) VALUES (N'1.°'), (N'2.°'), (N'3.°'), (N'4.°'), (N'5.°');
 
-    UPDATE Usuario
-    SET IntentosFallidos = IntentosFallidos + 1,
-        BloqueadoHasta = CASE
-            WHEN IntentosFallidos + 1 >= 3 THEN DATEADD(MINUTE, 15, GETDATE())
-            ELSE BloqueadoHasta
-        END
-    WHERE UsuarioId = @UsuarioId;
-END;
-GO
+-- Una sección A por grado, turno Mañana
+INSERT INTO Seccion (GradoId, TurnoId, Nombre)
+SELECT g.GradoId, t.TurnoId, 'A'
+FROM Grado g CROSS JOIN Turno t
+WHERE t.Nombre = N'Mañana';
 
--- Se llama cuando BCrypt.checkpw(...) da true en Java: limpia el contador.
-CREATE PROCEDURE sp_RegistrarLoginExitoso
-    @UsuarioId INT
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    UPDATE Usuario
-    SET IntentosFallidos = 0,
-        BloqueadoHasta = NULL
-    WHERE UsuarioId = @UsuarioId;
-END;
-GO
-
--- =========================================================
--- 8. STORED PROCEDURE DE REPORTES
--- =========================================================
--- Recalcula el consolidado de UN alumno en UN curso y UN bimestre.
---  * Promedio: solo notas de evaluaciones de ese curso y periodo.
---  * Asistencia: solo registros dentro de FechaInicio..FechaFin del periodo
---    (corrige el error de contar todo el año en cada bimestre).
---  * Si no hay notas, el estado queda 'En Proceso'.
---  * Nota mínima aprobatoria: 10.5
-CREATE PROCEDURE sp_ActualizarReporteRendimiento
-    @AlumnoId INT,
-    @CursoSeccionId INT,
-    @PeriodoId INT
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    DECLARE @FechaInicio DATE, @FechaFin DATE;
-
-    SELECT @FechaInicio = FechaInicio, @FechaFin = FechaFin
-    FROM Periodo
-    WHERE PeriodoId = @PeriodoId;
-
-    IF @FechaInicio IS NULL
-        THROW 50001, 'El periodo indicado no existe.', 1;
-
-    -- Promedio y cantidad de notas del bimestre
-    DECLARE @Promedio DECIMAL(4, 2), @CantNotas INT;
-
-    SELECT
-        @CantNotas = COUNT(n.Puntaje),
-        @Promedio  = CAST(ISNULL(ROUND(AVG(n.Puntaje), 2), 0) AS DECIMAL(4, 2))
-    FROM Nota n
-    INNER JOIN Evaluacion e ON n.EvaluacionId = e.EvaluacionId
-    WHERE n.AlumnoId = @AlumnoId
-      AND e.CursoSeccionId = @CursoSeccionId
-      AND e.PeriodoId = @PeriodoId;
-
-    -- Asistencia del bimestre (filtrada por fechas del periodo)
-    DECLARE @Asistencias INT, @Faltas INT, @Tardanzas INT, @Justificadas INT;
-
-    SELECT
-        @Asistencias  = ISNULL(SUM(CASE WHEN Estado = 'A' THEN 1 ELSE 0 END), 0),
-        @Faltas       = ISNULL(SUM(CASE WHEN Estado = 'F' THEN 1 ELSE 0 END), 0),
-        @Tardanzas    = ISNULL(SUM(CASE WHEN Estado = 'T' THEN 1 ELSE 0 END), 0),
-        @Justificadas = ISNULL(SUM(CASE WHEN Estado = 'J' THEN 1 ELSE 0 END), 0)
-    FROM Asistencia
-    WHERE AlumnoId = @AlumnoId
-      AND CursoSeccionId = @CursoSeccionId
-      AND Fecha BETWEEN @FechaInicio AND @FechaFin;
-
-    DECLARE @Estado VARCHAR(20) =
-        CASE
-            WHEN @CantNotas = 0 THEN 'En Proceso'
-            WHEN @Promedio >= 10.5 THEN 'Aprobado'
-            ELSE 'Desaprobado'
-        END;
-
-    BEGIN TRANSACTION;
-
-        UPDATE DetalleRendimiento WITH (UPDLOCK, SERIALIZABLE)
-        SET PromedioBimestre    = @Promedio,
-            TotalAsistencias    = @Asistencias,
-            TotalFaltas         = @Faltas,
-            TotalTardanzas      = @Tardanzas,
-            TotalJustificadas   = @Justificadas,
-            EstadoAprobacion    = @Estado,
-            UltimaActualizacion = GETDATE()
-        WHERE AlumnoId = @AlumnoId
-          AND CursoSeccionId = @CursoSeccionId
-          AND PeriodoId = @PeriodoId;
-
-        IF @@ROWCOUNT = 0
-            INSERT INTO DetalleRendimiento
-                (AlumnoId, CursoSeccionId, PeriodoId, PromedioBimestre,
-                 TotalAsistencias, TotalFaltas, TotalTardanzas, TotalJustificadas,
-                 EstadoAprobacion)
-            VALUES
-                (@AlumnoId, @CursoSeccionId, @PeriodoId, @Promedio,
-                 @Asistencias, @Faltas, @Tardanzas, @Justificadas, @Estado);
-
-    COMMIT TRANSACTION;
-END;
-GO
-
--- =========================================================
--- 9. SEMBRADO DE DATOS (CATÁLOGOS Y CARGA ACADÉMICA 2026)
--- =========================================================
-
--- A. Roles
-INSERT INTO Rol (Nombre) VALUES
-    ('Administrador'), ('Director'), ('Docente'), ('Estudiante');
-
--- B. Usuarios de prueba — hashes BCrypt reales (costo 12)
--- admin / admin123
+-- Usuarios de prueba (solo hashes BCrypt costo 12; las claves están en el README)
 INSERT INTO Usuario (Username, PasswordHash, RolId) VALUES
-    ('admin', '$2b$12$8sAEdDptTetEqXf9Qz.RoeHF2Es7MB/Jr04LhvlvpFQ66.tFJKXBK', 1);
--- director / director123
-INSERT INTO Usuario (Username, PasswordHash, RolId) VALUES
-    ('director', '$2b$12$1rjkXEevbKuuzHpM61vRquEvXAciUjP3CI6gZaRcfCa738THP1pl6', 2);
--- jgarcia / docente123
-INSERT INTO Usuario (Username, PasswordHash, RolId) VALUES
-    ('jgarcia', '$2b$12$NOQHr28UdpIvBY4pK.XZMef2a6vIth7JH90ErORvBV5GK.kVldtOe', 3);
--- alumno1 / alumno123
-INSERT INTO Usuario (Username, PasswordHash, RolId) VALUES
-    ('alumno1', '$2b$12$PvTAwdZeVMDx.oi.T6plou1iA3GMk4.Duodtfnv/jJUXkS/nYnqzG', 4);
+ ('director',   '$2b$12$4mfMY/jJqreGPFKzymAdNun685tZTxh3tAgvJsLT0j56QfGD50MzO',   (SELECT RolId FROM Rol WHERE Nombre = 'DIRECTOR')),
+ ('docente1',   '$2b$12$OoB/iu03oHIUjMOoJL0nceXRiKvtvsksAtHTavZwr2mryE1UFqKUW',   (SELECT RolId FROM Rol WHERE Nombre = 'DOCENTE')),
+ ('docente2',   '$2b$12$47DeEJCwo0HOzwjc9cZUautoVeOGZinSM2FF5JsNC0mAOoy47gvdK',   (SELECT RolId FROM Rol WHERE Nombre = 'DOCENTE')),
+ ('apoderado1', '$2b$12$dGgWh/VZ.txTGS8/S.J0tuke4xXrPI631jFBtwFZDyQruMyaTe0nW', (SELECT RolId FROM Rol WHERE Nombre = 'APODERADO'));
 
--- C. Turnos, Grados (1.° a 6.°, según RF05) y Cursos
-INSERT INTO Turno (Nombre) VALUES ('Mañana'), ('Tarde');
+-- Docentes de prueba (datos ficticios)
+INSERT INTO Docente (UsuarioId, DNI, Nombre, Apellido, Email) VALUES
+ ((SELECT UsuarioId FROM Usuario WHERE Username = 'docente1'), '40000001', 'Rosa',  'Prueba Uno', NULL),
+ ((SELECT UsuarioId FROM Usuario WHERE Username = 'docente2'), '40000002', 'Carlos','Prueba Dos', NULL);
 
-INSERT INTO Grado (Nombre) VALUES
-    ('1ro Secundaria'), ('2do Secundaria'), ('3ro Secundaria'),
-    ('4to Secundaria'), ('5to Secundaria'), ('6to Secundaria');
+-- Cursos y competencias (Currículo Nacional)
+INSERT INTO Curso (Nombre) VALUES (N'Matemática'), (N'Comunicación'), (N'Ciencia y Tecnología');
 
-INSERT INTO Curso (Nombre) VALUES
-    ('Matemáticas'), ('Comunicación'), ('Ciencia y Tecnología'),
-    ('Historia y Geografía'), ('Inglés');
+INSERT INTO Competencia (CursoId, Codigo, Nombre)
+SELECT c.CursoId, v.Codigo, v.Nombre
+FROM (VALUES
+ (N'Matemática',         '1', N'Resuelve problemas de cantidad'),
+ (N'Matemática',         '2', N'Resuelve problemas de regularidad, equivalencia y cambio'),
+ (N'Matemática',         '3', N'Resuelve problemas de forma, movimiento y localización'),
+ (N'Matemática',         '4', N'Resuelve problemas de gestión de datos e incertidumbre'),
+ (N'Comunicación',       '1', N'Se comunica oralmente en su lengua materna'),
+ (N'Comunicación',       '2', N'Lee diversos tipos de textos escritos'),
+ (N'Comunicación',       '3', N'Escribe diversos tipos de textos'),
+ (N'Ciencia y Tecnología','1', N'Indaga mediante métodos científicos'),
+ (N'Ciencia y Tecnología','2', N'Explica el mundo físico basándose en conocimientos'),
+ (N'Ciencia y Tecnología','3', N'Diseña y construye soluciones tecnológicas')
+) AS v(Curso, Codigo, Nombre)
+JOIN Curso c ON c.Nombre = v.Curso;
 
--- D. Secciones de 1er grado (2 Mañana, 2 Tarde)
-INSERT INTO Seccion (GradoId, TurnoId, Nombre) VALUES
-    (1, 1, 'A'), (1, 1, 'B'), (1, 2, 'C'), (1, 2, 'D');
+-- Carga académica de prueba: 1.° A
+INSERT INTO CursoSeccion (CursoId, SeccionId, DocenteId)
+SELECT c.CursoId,
+       (SELECT s.SeccionId FROM Seccion s JOIN Grado g ON g.GradoId = s.GradoId
+        WHERE g.Nombre = N'1.°' AND s.Nombre = 'A'),
+       CASE WHEN c.Nombre = N'Ciencia y Tecnología'
+            THEN (SELECT DocenteId FROM Docente WHERE DNI = '40000002')
+            ELSE (SELECT DocenteId FROM Docente WHERE DNI = '40000001') END
+FROM Curso c;
 
--- E. Docente
-INSERT INTO Profesor (UsuarioId, DNI, Nombre, Apellido, Email) VALUES
-    (3, '45879632', 'Juan', 'García', 'jgarcia@escuela.edu.pe');
-
--- F. 20 alumnos (5 por sección)
--- Sección A (dos primeros con datos de apoderado de ejemplo)
-INSERT INTO Alumno (SeccionId, UsuarioId, DNI, Nombre, Apellido, NombreApoderado, TelefonoApoderado) VALUES
-    (1, 4, '71000001', 'Carlos', 'Mendoza', 'Roberto Mendoza', '987654321'),
-    (1, NULL, '71000002', 'Ana', 'Rojas', 'Maria Rojas', '987654322');
-INSERT INTO Alumno (SeccionId, DNI, Nombre, Apellido) VALUES
-    (1, '71000003', 'Luis', 'Torres'),
-    (1, '71000004', 'Maria', 'Sanchez'),
-    (1, '71000005', 'Pedro', 'Gomez');
-
--- Sección B
-INSERT INTO Alumno (SeccionId, DNI, Nombre, Apellido) VALUES
-    (2, '72000001', 'Jorge', 'Castro'),
-    (2, '72000002', 'Lucia', 'Vargas'),
-    (2, '72000003', 'Diego', 'Flores'),
-    (2, '72000004', 'Elena', 'Morales'),
-    (2, '72000005', 'Raul', 'Gutierrez');
-
--- Sección C
-INSERT INTO Alumno (SeccionId, DNI, Nombre, Apellido) VALUES
-    (3, '73000001', 'Sofia', 'Espinoza'),
-    (3, '73000002', 'Mateo', 'Arias'),
-    (3, '73000003', 'Camila', 'Campos'),
-    (3, '73000004', 'Gabriel', 'Reyes'),
-    (3, '73000005', 'Valeria', 'Perez');
-
--- Sección D
-INSERT INTO Alumno (SeccionId, DNI, Nombre, Apellido) VALUES
-    (4, '74000001', 'Hugo', 'Navarro'),
-    (4, '74000002', 'Paula', 'Cordero'),
-    (4, '74000003', 'Daniel', 'Salazar'),
-    (4, '74000004', 'Andrea', 'Paredes'),
-    (4, '74000005', 'Marcos', 'Delgado');
-
--- G. Periodos 2026 (4 bimestres, con fechas de ejemplo; ajústalas al calendario real)
+-- Los 4 bimestres de 2026 (fechas referenciales: ajústalas desde la app, RF05)
 INSERT INTO Periodo (AnioLectivo, BimestreNum, FechaInicio, FechaFin) VALUES
-    (2026, 1, '2026-03-16', '2026-05-15'),
-    (2026, 2, '2026-05-18', '2026-07-24'),
-    (2026, 3, '2026-08-03', '2026-10-09'),
-    (2026, 4, '2026-10-12', '2026-12-18');
+ (2026, 1, '2026-03-16', '2026-05-15'),
+ (2026, 2, '2026-05-25', '2026-07-31'),
+ (2026, 3, '2026-08-10', '2026-10-09'),
+ (2026, 4, '2026-10-19', '2026-12-18');
 
--- H. Carga académica de prueba
--- Juan García (ProfesorId 1) dicta Matemáticas (CursoId 1) en 1ro A (SeccionId 1), año 2026
-INSERT INTO CursoSeccion (CursoId, SeccionId, ProfesorId, AnioLectivo) VALUES
-    (1, 1, 1, 2026);
+-- Evaluaciones: una por periodo, curso-sección y competencia
+INSERT INTO Evaluacion (PeriodoId, CursoSeccionId, CodigoCompetencia)
+SELECT p.PeriodoId, cs.CursoSeccionId, k.Codigo
+FROM Periodo p
+CROSS JOIN CursoSeccion cs
+JOIN Competencia k ON k.CursoId = cs.CursoId;
+
+-- Alumnos de prueba en 1.° A (datos ficticios); el primero tiene la cuenta apoderado1
+INSERT INTO Alumno (SeccionId, UsuarioId, DNI, Nombre, Apellido, NombreApoderado, TelefonoApoderado)
+SELECT (SELECT s.SeccionId FROM Seccion s JOIN Grado g ON g.GradoId = s.GradoId
+        WHERE g.Nombre = N'1.°' AND s.Nombre = 'A'),
+       v.UsuarioId, v.DNI, v.Nombre, v.Apellido, v.Apoderado, v.Telefono
+FROM (VALUES
+ ((SELECT UsuarioId FROM Usuario WHERE Username = 'apoderado1'), '70000001', 'Luis',   'Alumno Prueba Uno',    'Apoderado Prueba Uno',    '900000001'),
+ (CAST(NULL AS INT), '70000002', 'Ana',    'Alumno Prueba Dos',    'Apoderado Prueba Dos',    '900000002'),
+ (CAST(NULL AS INT), '70000003', 'Mateo',  'Alumno Prueba Tres',   'Apoderado Prueba Tres',   '900000003'),
+ (CAST(NULL AS INT), '70000004', 'Lucía',  'Alumno Prueba Cuatro', 'Apoderado Prueba Cuatro', '900000004'),
+ (CAST(NULL AS INT), '70000005', 'Diego',  'Alumno Prueba Cinco',  'Apoderado Prueba Cinco',  '900000005')
+) AS v(UsuarioId, DNI, Nombre, Apellido, Apoderado, Telefono);
+GO
+
+/* ---------- Verificación rápida ---------- */
+SELECT 'Rol' AS Tabla, COUNT(*) AS Filas FROM Rol
+UNION ALL SELECT 'Usuario', COUNT(*) FROM Usuario
+UNION ALL SELECT 'Seccion', COUNT(*) FROM Seccion
+UNION ALL SELECT 'Competencia', COUNT(*) FROM Competencia
+UNION ALL SELECT 'CursoSeccion', COUNT(*) FROM CursoSeccion
+UNION ALL SELECT 'Periodo', COUNT(*) FROM Periodo
+UNION ALL SELECT 'Evaluacion', COUNT(*) FROM Evaluacion
+UNION ALL SELECT 'Alumno', COUNT(*) FROM Alumno;
 GO
