@@ -86,7 +86,7 @@
             <artifactId>logback-classic</artifactId>
             <version>1.5.12</version>
         </dependency>
-                <!-- SLF4J 2.x explícito: HikariCP trae la 1.7.36 y Logback 1.5.x necesita la 2.x -->
+        <!-- SLF4J 2.x explícito: HikariCP trae la 1.7.36 y Logback 1.5.x necesita la 2.x -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
@@ -127,6 +127,24 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
+                <configuration>
+                    <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+                </configuration>
+            </plugin>
+            <!-- Documentación técnica: mvn javadoc:javadoc → target/site/apidocs -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.6.3</version>
+                <configuration>
+                    <encoding>UTF-8</encoding>
+                    <docencoding>UTF-8</docencoding>
+                    <charset>UTF-8</charset>
+                    <locale>es_PE</locale>
+                    <doclint>none</doclint>
+                    <doctitle>Sistema de Gestión Académica - Colegio Particular Pitágoras</doctitle>
+                    <windowtitle>SGA Pitágoras</windowtitle>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
