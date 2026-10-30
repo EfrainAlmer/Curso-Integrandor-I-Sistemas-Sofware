@@ -73,7 +73,7 @@ public class PnlRegistroAsistencia extends JPanel {
         JPanel pSec = new JPanel(new BorderLayout(0, 4));
         pSec.setBackground(EstilosUI.FONDO_GRIS);
         pSec.add(new JLabel("Sección"), BorderLayout.NORTH);
-        cboSeccion = new JComboBox<>(new String[]{"1.° A", "2.° A", "3.° A", "4.° A", "5.° A"});
+        cboSeccion = new JComboBox<>(controller.obtenerSeccionesDocenteActivo());
         cboSeccion.setSelectedItem("3.° A");
         cboSeccion.setPreferredSize(new Dimension(90, 36));
         cboSeccion.setBackground(Color.WHITE);

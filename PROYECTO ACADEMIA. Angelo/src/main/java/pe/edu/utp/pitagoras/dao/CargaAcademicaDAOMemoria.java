@@ -54,14 +54,6 @@ public class CargaAcademicaDAOMemoria implements ICargaAcademicaDAO {
         return String.format("CA-%d-%02d", ANIO, max + 1);
     }
 
-    /** Competencias del área, tomadas del currículo (fuente única). */
-    public static String[] competenciasDe(String area) {
-        return CurriculoSecundaria.AREAS.stream()
-                .filter(a -> a.nombre().equals(area)).findFirst()
-                .map(a -> a.competencias().toArray(new String[0]))
-                .orElse(new String[0]);
-    }
-
     // Misma carga que antes estaba escrita dentro de DocenteController.
     private void sembrarDatosDemo() {
         String[] grados = {"1.°", "2.°", "3.°", "4.°", "5.°"};
@@ -77,6 +69,6 @@ public class CargaAcademicaDAOMemoria implements ICargaAcademicaDAO {
 
     private void sembrar(String grado, String area, String username, String nombre) {
         cargas.add(new CargaAcademica(siguienteCodigo(), ANIO, grado, "A", CurriculoSecundaria.TURNO,
-                area, username, nombre, competenciasDe(area)));
+                area, username, nombre, CurriculoSecundaria.competenciasDe(area)));
     }
 }

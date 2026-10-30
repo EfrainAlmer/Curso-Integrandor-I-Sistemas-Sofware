@@ -44,7 +44,9 @@ public class PnlMiCargaDocente extends JPanel {
         lblTitulo.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         String cursosResumen = String.join(" y ", controller.obtenerAreasDocenteActivo());
-        JLabel lblSub = new JLabel("Áreas asignadas: " + cursosResumen + " · Grados 1.° A a 5.° A (RF11 / CU11)");
+        String seccionesResumen = String.join(", ", controller.obtenerSeccionesDocenteActivo());
+        JLabel lblSub = new JLabel("Áreas asignadas: " + cursosResumen
+                + " · Secciones: " + seccionesResumen + " (RF11 / CU11)");
         lblSub.setFont(new Font("SansSerif", Font.PLAIN, 13));
         lblSub.setForeground(EstilosUI.TEXTO_SECUNDARIO);
         lblSub.setAlignmentX(Component.LEFT_ALIGNMENT);

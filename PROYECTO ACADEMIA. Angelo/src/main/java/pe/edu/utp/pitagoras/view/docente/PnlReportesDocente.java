@@ -79,12 +79,12 @@ public class PnlReportesDocente extends JPanel {
         cboPeriodo.setSelectedItem("Bimestre 2");
         cboPeriodo.addActionListener(e -> actualizarVistaPrevia());
 
-        cboSeccion = new JComboBox<>(new String[]{"1.° A", "2.° A", "3.° A", "4.° A", "5.° A"});
+        cboSeccion = new JComboBox<>(controller.obtenerSeccionesDocenteActivo());
         cboSeccion.setSelectedItem("3.° A");
         cboSeccion.addActionListener(e -> actualizarVistaPrevia());
 
         cboArea = new JComboBox<>(controller.obtenerAreasDocenteActivo());
-        cboArea.setSelectedIndex(0);
+        if (cboArea.getItemCount() > 0) cboArea.setSelectedIndex(0);
         cboArea.addActionListener(e -> actualizarVistaPrevia());
 
         filtros.add(crearCampoFiltro("Tipo de Documento", cboTipoReporte, 320));
@@ -270,6 +270,14 @@ public class PnlReportesDocente extends JPanel {
         String periodo = (String) cboPeriodo.getSelectedItem();
         String seccion = (String) cboSeccion.getSelectedItem();
         String area = (String) cboArea.getSelectedItem();
+
+        if (periodo == null || seccion == null || area == null) {
+            // El docente aún no tiene carga académica asignada por el Director (RF06).
+            visorVistaPrevia.setText("<html><body style='font-family:SansSerif; margin:24px; color:#6c757d;'>"
+                    + "Aún no tienes carga académica asignada. Solicita a Dirección que te asigne "
+                    + "grado, sección y área.</body></html>");
+            return;
+        }
 
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Exportar Planilla a Microsoft Excel (.csv)");

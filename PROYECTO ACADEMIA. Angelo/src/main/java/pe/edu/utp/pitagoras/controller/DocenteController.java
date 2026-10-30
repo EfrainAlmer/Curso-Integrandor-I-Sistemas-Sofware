@@ -3,6 +3,8 @@ package pe.edu.utp.pitagoras.controller;
 import pe.edu.utp.pitagoras.dao.DocenteDAO;
 import pe.edu.utp.pitagoras.dao.IDocenteDAO;
 import pe.edu.utp.pitagoras.model.*;
+import pe.edu.utp.pitagoras.dao.CargaAcademicaDAOMemoria;
+import pe.edu.utp.pitagoras.dao.ICargaAcademicaDAO;
 
 import java.util.*;
 
@@ -22,7 +24,7 @@ public class DocenteController {
     private static final DocenteController INSTANCIA = new DocenteController();
 
     private final IDocenteDAO docenteDAO = new DocenteDAO();
-    private final Map<String, List<CargaAcademica>> cargasPorUsuarioDocente = new LinkedHashMap<>();
+    private final ICargaAcademicaDAO cargaDAO = CargaAcademicaDAOMemoria.getInstancia();
     private final Map<String, String[]> competenciasPorArea = new LinkedHashMap<>();
     private final Map<String, List<Estudiante>> estudiantesPorSeccion = new LinkedHashMap<>();
     private final Map<String, Boolean> estadoPeriodos = new LinkedHashMap<>();
@@ -44,13 +46,8 @@ public class DocenteController {
     }
 
     public void establecerDocenteActivo(String username, String nombreCompleto) {
-        if (username != null && cargasPorUsuarioDocente.containsKey(username.toLowerCase().trim())) {
-            this.usernameDocenteActivo = username.toLowerCase().trim();
-            this.nombreDocenteActivo = nombreCompleto;
-        } else {
-            this.usernameDocenteActivo = "docente";
-            this.nombreDocenteActivo = "Prof. Carlos Mendoza";
-        }
+        this.usernameDocenteActivo = username == null ? "" : username.toLowerCase().trim();
+        this.nombreDocenteActivo = nombreCompleto;
     }
 
     public String getUsernameDocenteActivo() {
@@ -62,6 +59,7 @@ public class DocenteController {
     }
 
     private void inicializarDatosDemo() {
+
         // 1. Estado de periodos bimestrales (RF07 / BPMN TO-BE Figura 9)
         estadoPeriodos.put("Bimestre 1", false); // Cerrado (Bloqueado para edición)
         estadoPeriodos.put("Bimestre 2", true);  // Abierto (En curso)
@@ -96,37 +94,7 @@ public class DocenteController {
         competenciasPorArea.put("Comunicación", compComunicacion);
         competenciasPorArea.put("Ciencias Sociales", compCienciasSociales);
 
-        String[] grados = {"1.°", "2.°", "3.°", "4.°", "5.°"};
-
-        // 3. Carga académica Docente 1 ("docente" - Prof. Carlos Mendoza):
-        // Enseña sus 2 cursos (Matemática y Ciencia y Tecnología) a TODOS los grados de 1.° A a 5.° A
-        List<CargaAcademica> cargaDocente1 = new ArrayList<>();
-        int contador1 = 1;
-        for (String grado : grados) {
-            cargaDocente1.add(new CargaAcademica(
-                    String.format("CA-2026-%02d", contador1++), 2026, grado, "A", "Mañana",
-                    "Matemática", "Prof. Carlos Mendoza", compMatematica));
-            cargaDocente1.add(new CargaAcademica(
-                    String.format("CA-2026-%02d", contador1++), 2026, grado, "A", "Mañana",
-                    "Ciencia y Tecnología", "Prof. Carlos Mendoza", compCyT));
-        }
-        cargasPorUsuarioDocente.put("docente", cargaDocente1);
-
-        // 4. Carga académica Docente 2 ("docente2" - Prof. María Quispe):
-        // Enseña sus 2 cursos diferentes (Comunicación y Ciencias Sociales) a TODOS los grados de 1.° A a 5.° A
-        List<CargaAcademica> cargaDocente2 = new ArrayList<>();
-        int contador2 = 11;
-        for (String grado : grados) {
-            cargaDocente2.add(new CargaAcademica(
-                    String.format("CA-2026-%02d", contador2++), 2026, grado, "A", "Mañana",
-                    "Comunicación", "Prof. María Quispe", compComunicacion));
-            cargaDocente2.add(new CargaAcademica(
-                    String.format("CA-2026-%02d", contador2++), 2026, grado, "A", "Mañana",
-                    "Ciencias Sociales", "Prof. María Quispe", compCienciasSociales));
-        }
-        cargasPorUsuarioDocente.put("docente2", cargaDocente2);
-
-        // 5. Nómina de estudiantes con NOMBRES COMPLETOS por sección (1.° A a 5.° A)
+        // 3. Nómina de estudiantes con NOMBRES COMPLETOS por sección (1.° A a 5.° A)
         estudiantesPorSeccion.put("1.° A", List.of(
                 new Estudiante(5, "75123401", "EST-1A-01", "Mendoza Torres, Sebastián", "1.° A", "Sr. Luis Mendoza", "964125874", "Activa"),
                 new Estudiante(6, "75123402", "EST-1A-02", "Ureta Salazar, Camila", "1.° A", "Sra. Carmen Salazar", "932145698", "Activa"),
@@ -162,7 +130,7 @@ public class DocenteController {
                 new Estudiante(20, "72145804", "EST-5A-04", "Bustamante León, Antonella", "5.° A", "Sra. Clara León", "985214763", "Activa")
         ));
 
-        // 6. Calificativos iniciales por área y sección con NOMBRES COMPLETOS de los estudiantes
+        // 4. Calificativos iniciales por área y sección con NOMBRES COMPLETOS de los estudiantes
         String[][] notas4Comp = {
                 {"A", "A", "B", "A"},
                 {"AD", "A", "A", "AD"},
@@ -209,19 +177,16 @@ public class DocenteController {
             }
         }
 
-        // 7. Eventos iniciales en bitácora de auditoría (RF09)
+        // 5. Eventos iniciales en bitácora de auditoría (RF09)
         bitacoraAuditoria.add(new BitacoraEvento("2026-10-29 08:15:00", "docente", "Attendance",
                 "MODIFICACION", "Estado=F (Almerco Huamán, Lucía)", "Estado=F (Justificada=Sí)"));
         bitacoraAuditoria.add(new BitacoraEvento("2026-10-29 09:30:00", "docente", "Grades",
                 "MODIFICACION", "Calificativo=B (Pérez Rojas, Juan Carlos)", "Calificativo=A"));
     }
 
+    /** Carga que el Director asignó al docente activo (RF06 → RF11). Vacía si aún no tiene. */
     public List<CargaAcademica> obtenerCargaDocente() {
-        List<CargaAcademica> lista = cargasPorUsuarioDocente.get(usernameDocenteActivo);
-        if (lista == null) {
-            lista = cargasPorUsuarioDocente.get("docente");
-        }
-        return Collections.unmodifiableList(lista);
+        return cargaDAO.listarPorDocente(usernameDocenteActivo);
     }
 
     public String[] obtenerSeccionesDocenteActivo() {
@@ -249,10 +214,8 @@ public class DocenteController {
     }
 
     public String[] obtenerCompetenciasArea(String areaCurricular) {
-        if (areaCurricular != null && competenciasPorArea.containsKey(areaCurricular)) {
-            return competenciasPorArea.get(areaCurricular);
-        }
-        return competenciasPorArea.get("Matemática");
+        String[] comps = CurriculoSecundaria.competenciasDe(areaCurricular);
+        return comps.length > 0 ? comps : competenciasPorArea.get("Matemática");
     }
 
     public List<CalificacionCompetencia> obtenerCalificaciones(String bimestre, String seccion, String area) {

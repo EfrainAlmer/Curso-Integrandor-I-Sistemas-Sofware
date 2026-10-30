@@ -56,6 +56,14 @@ public final class CurriculoSecundaria {
 
     private CurriculoSecundaria() { }
 
+    /** Competencias de un área por su nombre completo; arreglo vacío si el área no existe. */
+    public static String[] competenciasDe(String nombreArea) {
+        return AREAS.stream()
+                .filter(a -> a.nombre().equals(nombreArea)).findFirst()
+                .map(a -> a.competencias().toArray(new String[0]))
+                .orElse(new String[0]);
+    }
+
     public static int totalCompetencias() {
         int total = 0;
         for (AreaCurricular a : AREAS) total += a.competencias().size();

@@ -77,13 +77,13 @@ public class PnlRegistroNotas extends JPanel {
         cboPeriodo.setSelectedItem("Bimestre 2");
         cboPeriodo.addActionListener(e -> cargarGrillaSeleccionada());
 
-        cboSeccion = new JComboBox<>(new String[]{"1.° A", "2.° A", "3.° A", "4.° A", "5.° A"});
-        cboSeccion.setSelectedItem("3.° A");
+        cboSeccion = new JComboBox<>(controller.obtenerSeccionesDocenteActivo());
+        if (cboSeccion.getItemCount() > 0) cboSeccion.setSelectedIndex(0);
         cboSeccion.addActionListener(e -> cargarGrillaSeleccionada());
 
         String[] areasDelDocente = controller.obtenerAreasDocenteActivo();
         cboArea = new JComboBox<>(areasDelDocente);
-        cboArea.setSelectedIndex(0);
+        if (cboArea.getItemCount() > 0) cboArea.setSelectedIndex(0);
         cboArea.addActionListener(e -> cargarGrillaSeleccionada());
 
         filtros.add(envolverFiltro("Periodo", cboPeriodo, 115));

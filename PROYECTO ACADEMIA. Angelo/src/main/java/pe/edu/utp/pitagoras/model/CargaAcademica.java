@@ -32,13 +32,6 @@ public class CargaAcademica {
         this.competencias = competencias;
     }
 
-    /** Constructor anterior, solo para que el proyecto compile hasta el paso 1.3. Se elimina luego. */
-    @Deprecated
-    public CargaAcademica(String codigoCarga, int anioEscolar, String grado, String seccion,
-                          String turno, String areaCurricular, String docenteNombre, String[] competencias) {
-        this(codigoCarga, anioEscolar, grado, seccion, turno, areaCurricular, null, docenteNombre, competencias);
-    }
-
     public String getCodigoCarga() { return codigoCarga; }
     public int getAnioEscolar() { return anioEscolar; }
     public String getGrado() { return grado; }
